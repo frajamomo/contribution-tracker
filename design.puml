@@ -1,0 +1,249 @@
+@startuml ActivityTracker
+
+skinparam packageStyle rectangle
+skinparam classAttributeIconSize 0
+
+' ─────────────────────────────────────────────
+'  ENUMS
+' ─────────────────────────────────────────────
+enum PlatformType {
+  GITHUB
+  GITLAB
+}
+
+enum ActivityType {
+  COMMIT
+  ISSUE
+  PULL_REQUEST_REVIEW
+}
+
+enum IssueState {
+  OPEN
+  CLOSED
+}
+
+enum ReviewState {
+  APPROVED
+  CHANGES_REQUESTED
+  COMMENTED
+}
+
+' ─────────────────────────────────────────────
+'  DOMAIN
+' ─────────────────────────────────────────────
+package Domain {
+
+  class User {
+    +id: String
+    +username: String
+    +displayName: String
+    +email: String
+    +avatarUrl: String
+  }
+
+  class Repository {
+    +id: String
+    +name: String
+    +fullName: String
+    +url: String
+    +platform: PlatformType
+  }
+
+  abstract class Activity {
+    +id: String
+    +url: String
+    +createdAt: DateTime
+    +author: User
+    +repository: Repository
+    +{abstract} getType(): ActivityType
+    +{abstract} getSummary(): String
+  }
+
+  class Commit extends Activity {
+    +sha: String
+    +message: String
+    +additions: int
+    +deletions: int
+    +getType(): ActivityType
+    +getSummary(): String
+  }
+
+  class Issue extends Activity {
+    +title: String
+    +body: String
+    +state: IssueState
+    +closedAt: DateTime
+    +labels: List<String>
+    +getType(): ActivityType
+    +getSummary(): String
+  }
+
+  class PullRequestReview extends Activity {
+    +pullRequestId: String
+    +pullRequestTitle: String
+    +state: ReviewState
+    +body: String
+    +submittedAt: DateTime
+    +getType(): ActivityType
+    +getSummary(): String
+  }
+
+  class ActivityQuery {
+    +users: List<User>
+    +repositories: List<Repository>
+    +activityTypes: List<ActivityType>
+    +since: DateTime
+    +until: DateTime
+  }
+
+  class ActivityReport {
+    +query: ActivityQuery
+    +activities: List<Activity>
+    +generatedAt: DateTime
+    +getByUser(user: User): List<Activity>
+    +getByRepository(repo: Repository): List<Activity>
+    +getByType(type: ActivityType): List<Activity>
+    +getSummary(): ReportSummary
+  }
+
+  class ReportSummary {
+    +totalCount: int
+    +countByUser: Map<User, int>
+    +countByType: Map<ActivityType, int>
+    +countByRepository: Map<Repository, int>
+  }
+
+  Activity --> User         : author >
+  Activity --> Repository   : repository >
+  Repository --> PlatformType
+  ActivityQuery "1" o-- "1..*" User
+  ActivityQuery "1" o-- "*" Repository
+  ActivityReport --> ActivityQuery   : query >
+  ActivityReport --> ReportSummary   : summary >
+  ActivityReport "1" *-- "*" Activity
+}
+
+' ─────────────────────────────────────────────
+'  APPLICATION (USE CASES)
+' ─────────────────────────────────────────────
+package Application {
+
+  class SourceConfig {
+    +platform: PlatformType
+    +apiToken: String
+    +baseUrl: String
+  }
+
+  abstract class ActivitySource {
+    +platform: PlatformType
+    +{abstract} fetchCommits(user: User, repo: Repository, since: DateTime, until: DateTime): List<Commit>
+    +{abstract} fetchIssues(user: User, repo: Repository, since: DateTime, until: DateTime): List<Issue>
+    +{abstract} fetchReviews(user: User, repo: Repository, since: DateTime, until: DateTime): List<PullRequestReview>
+    +fetchAll(user: User, repo: Repository, since: DateTime, until: DateTime): List<Activity>
+  }
+
+  class ActivitySourceFactory {
+    +create(config: SourceConfig): ActivitySource
+  }
+
+  class ActivityService {
+    -sources: Map<PlatformType, ActivitySource>
+    +addSource(source: ActivitySource): void
+    +fetchActivities(query: ActivityQuery): ActivityReport
+  }
+
+  ActivitySource --> PlatformType
+  ActivitySourceFactory --> ActivitySource   : creates >
+  ActivitySourceFactory --> SourceConfig
+  ActivityService --> ActivitySourceFactory
+  ActivityService "1" o-- "*" ActivitySource
+  ActivityService ..> ActivityReport         : produces >
+}
+
+' ─────────────────────────────────────────────
+'  INFRASTRUCTURE
+' ─────────────────────────────────────────────
+package Infrastructure {
+
+  class GitHubApiClient {
+    -baseUrl: String
+    -token: String
+    +get(endpoint: String, params: Map): JsonNode
+    +paginate(endpoint: String, params: Map): List<JsonNode>
+  }
+
+  class GitLabApiClient {
+    -baseUrl: String
+    -token: String
+    +get(endpoint: String, params: Map): JsonNode
+    +paginate(endpoint: String, params: Map): List<JsonNode>
+  }
+
+  class GitHubSource extends Application.ActivitySource {
+    -client: GitHubApiClient
+    +fetchCommits(...): List<Commit>
+    +fetchIssues(...): List<Issue>
+    +fetchReviews(...): List<PullRequestReview>
+  }
+
+  class GitLabSource extends Application.ActivitySource {
+    -client: GitLabApiClient
+    +fetchCommits(...): List<Commit>
+    +fetchIssues(...): List<Issue>
+    +fetchReviews(...): List<PullRequestReview>
+  }
+
+  GitHubSource --> GitHubApiClient
+  GitLabSource --> GitLabApiClient
+}
+
+' ─────────────────────────────────────────────
+'  PRESENTATION (Web API)
+' ─────────────────────────────────────────────
+package Presentation {
+
+  class ActivityController {
+    -activityService: ActivityService
+    +getReport(request: ReportRequest): ReportResponse
+  }
+
+  class ReportRequest {
+    +usernames: List<String>
+    +repositories: List<String>
+    +platforms: List<String>
+    +activityTypes: List<String>
+    +since: String
+    +until: String
+  }
+
+  class ReportResponse {
+    +activities: List<ActivityDTO>
+    +summary: SummaryDTO
+    +generatedAt: String
+  }
+
+  class ActivityDTO {
+    +type: String
+    +id: String
+    +url: String
+    +summary: String
+    +author: String
+    +repository: String
+    +createdAt: String
+  }
+
+  class SummaryDTO {
+    +totalCount: int
+    +countByUser: Map<String, int>
+    +countByType: Map<String, int>
+    +countByRepository: Map<String, int>
+  }
+
+  ActivityController --> Application.ActivityService
+  ActivityController ..> ReportRequest   : accepts >
+  ActivityController ..> ReportResponse  : returns >
+  ReportResponse "1" *-- "*" ActivityDTO
+  ReportResponse --> SummaryDTO
+}
+
+@enduml
