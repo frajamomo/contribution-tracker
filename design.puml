@@ -1,4 +1,4 @@
-@startuml ActivityTracker
+@startuml design
 
 skinparam packageStyle rectangle
 skinparam classAttributeIconSize 0
@@ -28,8 +28,36 @@ enum ReviewState {
   COMMENTED
 }
 
+enum Role {
+  USER
+  MANAGER
+  ADMIN
+}
+
+enum ReportEventType {
+  USER_REPORT
+  COMPLETE
+}
+
+enum ReportType {
+  ACTIVITY_LOG
+  WEIGHTED_SCORE
+}
+
+enum TimePeriod {
+  LAST_7_DAYS
+  LAST_30_DAYS
+  CURRENT_QUARTER
+  LAST_QUARTER
+  CURRENT_YEAR
+  LAST_YEAR
+  CUSTOM
+}
+
 ' ─────────────────────────────────────────────
 '  DOMAIN
+'  Cross-aggregate references use String IDs.
+'  Enums are value types; referencing them is fine.
 ' ─────────────────────────────────────────────
 package Domain {
 
@@ -39,6 +67,22 @@ package Domain {
     +displayName: String
     +email: String
     +avatarUrl: String
+  }
+
+  class UserAccount {
+    +id: String
+    +username: String
+    +passwordHash: String
+    +role: Role
+    +userId: String
+    +trackedRepositoryIds: List<String>
+  }
+
+  class Team {
+    +id: String
+    +name: String
+    +managerId: String
+    +memberIds: List<String>
   }
 
   class Repository {
@@ -53,8 +97,8 @@ package Domain {
     +id: String
     +url: String
     +createdAt: DateTime
-    +author: User
-    +repository: Repository
+    +authorId: String
+    +repositoryId: String
     +{abstract} getType(): ActivityType
     +{abstract} getSummary(): String
   }
@@ -88,39 +132,23 @@ package Domain {
     +getSummary(): String
   }
 
-  class ActivityQuery {
-    +users: List<User>
+  class BackupMetadata {
+    +appVersion: String
+    +exportedAt: DateTime
+    +exportedBy: String
+  }
+
+  class BackupFile {
+    +metadata: BackupMetadata
+    +accounts: List<UserAccount>
+    +teams: List<Team>
     +repositories: List<Repository>
-    +activityTypes: List<ActivityType>
-    +since: DateTime
-    +until: DateTime
   }
 
-  class ActivityReport {
-    +query: ActivityQuery
-    +activities: List<Activity>
-    +generatedAt: DateTime
-    +getByUser(user: User): List<Activity>
-    +getByRepository(repo: Repository): List<Activity>
-    +getByType(type: ActivityType): List<Activity>
-    +getSummary(): ReportSummary
-  }
-
-  class ReportSummary {
-    +totalCount: int
-    +countByUser: Map<User, int>
-    +countByType: Map<ActivityType, int>
-    +countByRepository: Map<Repository, int>
-  }
-
-  Activity --> User         : author >
-  Activity --> Repository   : repository >
-  Repository --> PlatformType
-  ActivityQuery "1" o-- "1..*" User
-  ActivityQuery "1" o-- "*" Repository
-  ActivityReport --> ActivityQuery   : query >
-  ActivityReport --> ReportSummary   : summary >
-  ActivityReport "1" *-- "*" Activity
+  ' Only enum references and internal composition remain
+  UserAccount --> Role
+  Repository  --> PlatformType
+  BackupFile  --> BackupMetadata
 }
 
 ' ─────────────────────────────────────────────
@@ -128,42 +156,184 @@ package Domain {
 ' ─────────────────────────────────────────────
 package Application {
 
-  class SourceConfig {
-    +platform: PlatformType
-    +apiToken: String
-    +baseUrl: String
+  ' ── Query / Report (moved from Domain) ───────
+
+  class ActivityWeights {
+    +commitWeight: double
+    +issueWeight: double
+    +reviewWeight: double
+    +scoreFor(activities: List<Activity>): double
   }
 
-  abstract class ActivitySource {
-    +platform: PlatformType
-    +{abstract} fetchCommits(user: User, repo: Repository, since: DateTime, until: DateTime): List<Commit>
-    +{abstract} fetchIssues(user: User, repo: Repository, since: DateTime, until: DateTime): List<Issue>
-    +{abstract} fetchReviews(user: User, repo: Repository, since: DateTime, until: DateTime): List<PullRequestReview>
-    +fetchAll(user: User, repo: Repository, since: DateTime, until: DateTime): List<Activity>
+  class ActivityQuery {
+    +userIds: List<String>
+    +repositoryIds: List<String>
+    +activityTypes: List<ActivityType>
+    +period: TimePeriod
+    +since: DateTime
+    +until: DateTime
+    +reportType: ReportType
+    +weights: ActivityWeights
   }
 
-  class ActivitySourceFactory {
-    +create(config: SourceConfig): ActivitySource
+  class ReportSummary {
+    +totalCount: int
+    +countByUser: Map<String, int>
+    +countByType: Map<ActivityType, int>
+    +countByRepository: Map<String, int>
+    +scoreByUser: Map<String, double>
+  }
+
+  class UserReport {
+    +userId: String
+    +activities: List<Activity>
+    +summary: ReportSummary
+    +weightedScore: double
+  }
+
+  class ActivityReport {
+    +query: ActivityQuery
+    +userReports: List<UserReport>
+    +generatedAt: DateTime
+    +getByType(type: ActivityType): List<Activity>
+    +getSummary(): ReportSummary
+  }
+
+  ActivityQuery --> ActivityWeights
+  ActivityQuery --> TimePeriod
+  ActivityQuery --> ReportType
+  UserReport "1" *-- "*" Domain.Activity
+  UserReport --> ReportSummary
+  ActivityReport --> ActivityQuery
+  ActivityReport "1" *-- "*" UserReport
+  ActivityReport --> ReportSummary : summary >
+
+  ' ── Sources (Strategy + Registry) ───────────
+  '
+  ' Strategy: each ActivityFetcher declares what it can produce
+  '   via getSupportedTypes() and getSupportedPlatforms().
+  '   A single fetch() replaces the fixed per-type methods,
+  '   so new contribution kinds never require interface changes.
+  '
+  ' Registry: ActivityFetcherRegistry is the extension point.
+  '   New fetchers self-register; ActivityService queries the
+  '   registry without knowing concrete implementations.
+
+  interface ActivityFetcher {
+    +getSupportedTypes(): Set<ActivityType>
+    +getSupportedPlatforms(): Set<PlatformType>
+    +fetch(userId: String, repositoryId: String, since: DateTime, until: DateTime): List<Activity>
+  }
+
+  class ActivityFetcherRegistry {
+    +register(fetcher: ActivityFetcher): void
+    +fetchersFor(platform: PlatformType, types: Set<ActivityType>): List<ActivityFetcher>
+  }
+
+  ActivityFetcherRegistry "1" o-- "*" ActivityFetcher : registered >
+
+  ' ── Auth ─────────────────────────────────────
+
+  class AuthToken {
+    +value: String
+    +expiresAt: DateTime
+    +accountId: String
+  }
+
+  class AuthContext {
+    +account: Domain.UserAccount
+    +role: Role
+    +teamId: String
+    +isManager(): boolean
+    +isAdmin(): boolean
+    +canAccessUserId(userId: String): boolean
+    +getAccessibleRepositoryIds(): List<String>
+  }
+
+  class AuthService {
+    +login(username: String, password: String): AuthToken
+    +logout(token: AuthToken): void
+    +validate(token: AuthToken): AuthContext
+  }
+
+  ' ── Persistence ports ─────────────────────────
+
+  interface UserAccountRepository {
+    +findByUsername(username: String): UserAccount
+    +findById(id: String): UserAccount
+    +save(account: UserAccount): void
+  }
+
+  interface TeamRepository {
+    +findByManagerId(managerId: String): Team
+    +findByMemberId(memberId: String): Team
+    +save(team: Team): void
+  }
+
+  interface UserRepository {
+    +findById(id: String): User
+    +findByIds(ids: List<String>): List<User>
+  }
+
+  interface RepositoryStore {
+    +findById(id: String): Repository
+    +findByIds(ids: List<String>): List<Repository>
+  }
+
+  AuthService --> UserAccountRepository  : reads >
+  AuthService --> TeamRepository         : reads >
+  AuthContext --> Domain.UserAccount
+
+  ' ── Backup ───────────────────────────────────
+
+  class BackupService {
+    +exportBackup(auth: AuthContext): BackupFile
+    +importBackup(auth: AuthContext, data: BackupFile): void
+  }
+
+  BackupService --> UserAccountRepository  : reads/writes >
+  BackupService --> TeamRepository         : reads/writes >
+  BackupService --> RepositoryStore        : reads/writes >
+  BackupService ..> Domain.BackupFile      : produces/consumes >
+  BackupService ..> AuthContext            : enforces ADMIN >
+
+  ' ── Streaming events ─────────────────────────
+
+  abstract class ReportEvent {
+    +type: ReportEventType
+  }
+
+  class UserReportEvent extends ReportEvent {
+    +userReport: UserReport
+  }
+
+  class ReportCompleteEvent extends ReportEvent {
+    +summary: ReportSummary
   }
 
   class ActivityService {
-    -sources: Map<PlatformType, ActivitySource>
-    +addSource(source: ActivitySource): void
-    +fetchActivities(query: ActivityQuery): ActivityReport
+    +streamActivities(query: ActivityQuery, auth: AuthContext): Stream<ReportEvent>
   }
 
-  ActivitySource --> PlatformType
-  ActivitySourceFactory --> ActivitySource   : creates >
-  ActivitySourceFactory --> SourceConfig
-  ActivityService --> ActivitySourceFactory
-  ActivityService "1" o-- "*" ActivitySource
-  ActivityService ..> ActivityReport         : produces >
+  AuthService ..> AuthToken                   : issues >
+  AuthService ..> AuthContext                 : produces >
+  ReportEvent --> ReportEventType
+  UserReportEvent --> UserReport
+  ReportCompleteEvent --> ReportSummary
+  ActivityService --> ActivityFetcherRegistry
+  ActivityService --> UserRepository
+  ActivityService --> RepositoryStore
+  ActivityService ..> ReportEvent             : streams >
+  ActivityService ..> AuthContext             : enforces >
 }
 
 ' ─────────────────────────────────────────────
 '  INFRASTRUCTURE
 ' ─────────────────────────────────────────────
 package Infrastructure {
+
+  ' Each fetcher is an independent Strategy implementation.
+  ' Adding a new contribution kind = one new class + one register() call.
 
   class GitHubApiClient {
     -baseUrl: String
@@ -179,18 +349,57 @@ package Infrastructure {
     +paginate(endpoint: String, params: Map): List<JsonNode>
   }
 
-  class GitHubSource extends Application.ActivitySource {
-    -client: GitHubApiClient
-    +fetchCommits(...): List<Commit>
-    +fetchIssues(...): List<Issue>
-    +fetchReviews(...): List<PullRequestReview>
+  class JiraApiClient {
+    -baseUrl: String
+    -token: String
+    +get(endpoint: String, params: Map): JsonNode
   }
 
-  class GitLabSource extends Application.ActivitySource {
+  class GitHubActivityFetcher implements Application.ActivityFetcher {
+    -client: GitHubApiClient
+    +getSupportedTypes(): Set<ActivityType>
+    +getSupportedPlatforms(): Set<PlatformType>
+    +fetch(userId: String, repositoryId: String, since: DateTime, until: DateTime): List<Activity>
+  }
+
+  class GitLabActivityFetcher implements Application.ActivityFetcher {
     -client: GitLabApiClient
-    +fetchCommits(...): List<Commit>
-    +fetchIssues(...): List<Issue>
-    +fetchReviews(...): List<PullRequestReview>
+    +getSupportedTypes(): Set<ActivityType>
+    +getSupportedPlatforms(): Set<PlatformType>
+    +fetch(userId: String, repositoryId: String, since: DateTime, until: DateTime): List<Activity>
+  }
+
+  class JiraActivityFetcher implements Application.ActivityFetcher {
+    -client: JiraApiClient
+    +getSupportedTypes(): Set<ActivityType>
+    +getSupportedPlatforms(): Set<PlatformType>
+    +fetch(userId: String, repositoryId: String, since: DateTime, until: DateTime): List<Activity>
+  }
+
+  GitHubActivityFetcher --> GitHubApiClient
+  GitLabActivityFetcher --> GitLabApiClient
+  JiraActivityFetcher   --> JiraApiClient
+
+  class JpaUserAccountRepository implements Application.UserAccountRepository {
+    +findByUsername(username: String): UserAccount
+    +findById(id: String): UserAccount
+    +save(account: UserAccount): void
+  }
+
+  class JpaTeamRepository implements Application.TeamRepository {
+    +findByManagerId(managerId: String): Team
+    +findByMemberId(memberId: String): Team
+    +save(team: Team): void
+  }
+
+  class JpaUserRepository implements Application.UserRepository {
+    +findById(id: String): User
+    +findByIds(ids: List<String>): List<User>
+  }
+
+  class JpaRepositoryStore implements Application.RepositoryStore {
+    +findById(id: String): Repository
+    +findByIds(ids: List<String>): List<Repository>
   }
 
   GitHubSource --> GitHubApiClient
@@ -202,9 +411,33 @@ package Infrastructure {
 ' ─────────────────────────────────────────────
 package Presentation {
 
+  class LoginController {
+    -authService: AuthService
+    +login(request: LoginRequest): LoginResponse
+    +logout(token: String): void
+  }
+
+  class LoginRequest {
+    +username: String
+    +password: String
+  }
+
+  class LoginResponse {
+    +token: String
+    +expiresAt: String
+    +role: String
+  }
+
+  class ReportEventDTO {
+    +type: String
+    +userReport: UserReportDTO
+    +summary: SummaryDTO
+  }
+
   class ActivityController {
     -activityService: ActivityService
-    +getReport(request: ReportRequest): ReportResponse
+    -authService: AuthService
+    +streamReport(request: ReportRequest, token: String): SseStream<ReportEventDTO>
   }
 
   class ReportRequest {
@@ -212,14 +445,21 @@ package Presentation {
     +repositories: List<String>
     +platforms: List<String>
     +activityTypes: List<String>
+    +period: String
     +since: String
     +until: String
+    +reportType: String
+    +commitWeight: double
+    +issueWeight: double
+    +reviewWeight: double
   }
 
-  class ReportResponse {
+  class UserReportDTO {
+    +username: String
+    +displayName: String
     +activities: List<ActivityDTO>
     +summary: SummaryDTO
-    +generatedAt: String
+    +weightedScore: double
   }
 
   class ActivityDTO {
@@ -237,13 +477,29 @@ package Presentation {
     +countByUser: Map<String, int>
     +countByType: Map<String, int>
     +countByRepository: Map<String, int>
+    +scoreByUser: Map<String, double>
   }
 
+  class AdminController {
+    -backupService: BackupService
+    -authService: AuthService
+    +exportBackup(token: String): ResponseEntity<BackupFile>
+    +importBackup(token: String, file: MultipartFile): void
+  }
+
+  LoginController --> Application.AuthService
+  LoginController ..> LoginRequest       : accepts >
+  LoginController ..> LoginResponse      : returns >
   ActivityController --> Application.ActivityService
+  ActivityController --> Application.AuthService
   ActivityController ..> ReportRequest   : accepts >
-  ActivityController ..> ReportResponse  : returns >
-  ReportResponse "1" *-- "*" ActivityDTO
-  ReportResponse --> SummaryDTO
+  ActivityController ..> ReportEventDTO  : streams >
+  ReportEventDTO --> UserReportDTO
+  ReportEventDTO --> SummaryDTO
+  UserReportDTO "1" *-- "*" ActivityDTO
+  UserReportDTO --> SummaryDTO
+  AdminController --> Application.BackupService
+  AdminController --> Application.AuthService
 }
 
 @enduml

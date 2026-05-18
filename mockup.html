@@ -1,0 +1,1195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contribution Tracker</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --blue: #0969da;
+  --blue-light: #dbeafe;
+  --green: #1a7f37;
+  --green-light: #dcfce7;
+  --orange: #9a6700;
+  --orange-light: #fef9c3;
+  --red: #cf222e;
+  --text: #24292f;
+  --text-muted: #57606a;
+  --border: #d0d7de;
+  --bg: #f6f8fa;
+  --white: #ffffff;
+  --purple: #8250df;
+  --purple-light: #ede9fe;
+}
+
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: var(--text); background: var(--bg); }
+
+/* ── LOGIN ── */
+#screen-login {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #f0f4ff 0%, #f6f8fa 100%);
+}
+.login-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 40px;
+  width: 360px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+}
+.login-logo { text-align: center; margin-bottom: 28px; }
+.login-logo .logo-icon { font-size: 40px; display: block; margin-bottom: 10px; }
+.login-logo h1 { font-size: 22px; font-weight: 700; }
+.login-logo p { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; }
+.form-group input {
+  width: 100%; padding: 9px 12px;
+  border: 1px solid var(--border); border-radius: 6px;
+  font-size: 14px; outline: none; transition: border-color 0.15s;
+}
+.form-group input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(9,105,218,0.12); }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: 6px;
+  font-size: 14px; font-weight: 500; cursor: pointer;
+  border: 1px solid transparent; transition: all 0.15s;
+}
+.btn-primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+.btn-primary:hover { background: #0860ca; }
+.btn-secondary { background: var(--white); color: var(--text); border-color: var(--border); }
+.btn-secondary:hover { background: var(--bg); }
+.btn-block { width: 100%; justify-content: center; }
+.btn-sm { padding: 5px 11px; font-size: 12px; }
+.error-msg { color: var(--red); font-size: 13px; margin-bottom: 10px; display: none; }
+.login-hint {
+  margin-top: 20px; padding: 12px 14px;
+  background: var(--bg); border-radius: 6px;
+  font-size: 12px; color: var(--text-muted); line-height: 1.6;
+}
+.login-hint strong { display: block; margin-bottom: 4px; color: var(--text); font-size: 12px; }
+
+/* ── APP SHELL ── */
+#screen-app { display: none; flex-direction: column; min-height: 100vh; }
+
+.navbar {
+  background: var(--white); border-bottom: 1px solid var(--border);
+  padding: 0 24px; height: 56px;
+  display: flex; align-items: center; gap: 16px;
+  position: sticky; top: 0; z-index: 100;
+}
+.navbar-brand { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; flex: 1; }
+.navbar-brand .logo { font-size: 22px; }
+.navbar-user { display: flex; align-items: center; gap: 12px; }
+
+.avatar {
+  width: 34px; height: 34px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 13px; color: #fff; flex-shrink: 0;
+}
+.role-badge {
+  padding: 2px 8px; border-radius: 20px;
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.role-user    { background: var(--blue-light); color: var(--blue); }
+.role-manager { background: var(--purple-light); color: var(--purple); }
+
+.app-body { display: flex; flex: 1; min-height: 0; }
+
+/* ── SIDEBAR ── */
+.sidebar {
+  width: 260px; background: var(--white);
+  border-right: 1px solid var(--border);
+  padding: 20px; display: flex; flex-direction: column; gap: 8px;
+  flex-shrink: 0; overflow-y: auto;
+}
+.sidebar-title {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.6px;
+  color: var(--text-muted); margin-bottom: 8px; margin-top: 4px;
+}
+.repo-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 9px; border-radius: 6px;
+  font-size: 13px; background: var(--bg);
+  border: 1px solid var(--border);
+}
+.repo-icon { font-size: 15px; flex-shrink: 0; }
+.repo-info { flex: 1; overflow: hidden; }
+.repo-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.repo-platform { font-size: 11px; color: var(--text-muted); }
+.repo-remove {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-muted); font-size: 13px; padding: 2px 4px;
+  border-radius: 3px; line-height: 1;
+}
+.repo-remove:hover { color: var(--red); background: #fff0f0; }
+.no-repos { font-size: 13px; color: var(--text-muted); padding: 4px 0; }
+.add-repo-form { margin-top: 4px; display: none; }
+.add-repo-form input, .add-repo-form select {
+  width: 100%; padding: 7px 10px; margin-bottom: 7px;
+  border: 1px solid var(--border); border-radius: 6px;
+  font-size: 13px; outline: none; background: var(--white);
+}
+.add-repo-form input:focus, .add-repo-form select:focus { border-color: var(--blue); }
+.add-repo-actions { display: flex; gap: 6px; }
+
+/* ── MAIN ── */
+.main-content { flex: 1; padding: 28px 32px; overflow-y: auto; }
+.page-header { margin-bottom: 24px; }
+.page-title { font-size: 22px; font-weight: 700; }
+.page-subtitle { font-size: 14px; color: var(--text-muted); margin-top: 4px; }
+
+/* ── REPORT FORM ── */
+.report-form {
+  background: var(--white); border: 1px solid var(--border);
+  border-radius: 8px; padding: 20px; margin-bottom: 24px;
+}
+.report-form-title { font-size: 14px; font-weight: 600; margin-bottom: 16px; }
+.form-row { display: flex; gap: 14px; flex-wrap: wrap; }
+.form-field { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 150px; }
+.form-field label { font-size: 12px; font-weight: 500; color: var(--text-muted); }
+.form-field input, .form-field select {
+  padding: 7px 10px; border: 1px solid var(--border);
+  border-radius: 6px; font-size: 13px; background: var(--white); outline: none;
+}
+.form-field input:focus, .form-field select:focus { border-color: var(--blue); }
+.activity-types { margin-top: 14px; }
+.activity-types-label { font-size: 12px; font-weight: 500; color: var(--text-muted); margin-bottom: 8px; }
+.checkbox-group { display: flex; gap: 16px; flex-wrap: wrap; }
+.checkbox-label { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; user-select: none; }
+.checkbox-label input { accent-color: var(--blue); width: 14px; height: 14px; }
+.form-actions { margin-top: 18px; display: flex; align-items: center; gap: 14px; }
+.form-hint { font-size: 12px; color: var(--text-muted); }
+
+/* ── STREAM STATUS ── */
+.stream-status {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 16px; border-radius: 8px; font-size: 13px;
+  background: var(--blue-light); border: 1px solid #bfdbfe; color: var(--blue);
+}
+.stream-status.done { background: var(--green-light); border-color: #bbf7d0; color: var(--green); }
+.pulse {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: currentColor; flex-shrink: 0;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+.stream-status.done .pulse { animation: none; }
+
+/* ── USER REPORT CARD ── */
+.user-report-card {
+  background: var(--white); border: 1px solid var(--border);
+  border-radius: 8px; overflow: hidden;
+  animation: slideIn 0.3s ease-out;
+}
+@keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+.card-header {
+  padding: 14px 20px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px; background: var(--bg);
+  flex-wrap: wrap; gap: 12px;
+}
+.card-user-info { flex: 1; min-width: 160px; }
+.card-user-name { font-size: 15px; font-weight: 600; }
+.card-user-meta { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.stat-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+.stat-pill {
+  padding: 3px 10px; border-radius: 20px;
+  font-size: 12px; font-weight: 500; white-space: nowrap;
+}
+.pill-commit { background: var(--blue-light); color: var(--blue); }
+.pill-issue  { background: var(--green-light); color: var(--green); }
+.pill-review { background: var(--purple-light); color: var(--purple); }
+
+.card-body { padding: 0; }
+.activity-list { display: flex; flex-direction: column; }
+.activity-item {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 11px 20px; font-size: 13px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+.activity-item:last-child { border-bottom: none; }
+.activity-item:hover { background: var(--bg); }
+.activity-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+.activity-content { flex: 1; }
+.activity-title { font-weight: 500; line-height: 1.45; }
+.activity-meta { font-size: 11px; color: var(--text-muted); margin-top: 3px; display: flex; gap: 10px; flex-wrap: wrap; }
+.activity-date { font-size: 11px; color: var(--text-muted); white-space: nowrap; flex-shrink: 0; margin-top: 2px; }
+
+/* ── SUMMARY CARD ── */
+.summary-card {
+  background: var(--white); border: 1px solid var(--border);
+  border-radius: 8px; padding: 20px;
+  animation: slideIn 0.3s ease-out;
+}
+.summary-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 16px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; }
+.summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
+.summary-stat {
+  text-align: center; padding: 16px 12px;
+  background: var(--bg); border-radius: 8px; border: 1px solid var(--border);
+}
+.stat-value { font-size: 30px; font-weight: 700; line-height: 1; }
+.stat-label { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+.stat-blue   .stat-value { color: var(--blue); }
+.stat-green  .stat-value { color: var(--green); }
+.stat-purple .stat-value { color: var(--purple); }
+.stat-orange .stat-value { color: var(--orange); }
+
+.results-area { display: flex; flex-direction: column; gap: 14px; }
+.hidden { display: none !important; }
+
+/* ── REPORT TYPE TABS ── */
+.report-type-tabs { display: flex; gap: 0; margin-bottom: 18px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; width: fit-content; }
+.report-tab {
+  padding: 7px 18px; font-size: 13px; font-weight: 500; cursor: pointer;
+  background: var(--white); border: none; color: var(--text-muted);
+  transition: all 0.15s;
+}
+.report-tab:not(:last-child) { border-right: 1px solid var(--border); }
+.report-tab.active { background: var(--blue); color: #fff; }
+.report-tab:not(.active):hover { background: var(--bg); color: var(--text); }
+
+/* ── WEIGHT INPUTS ── */
+.weights-panel {
+  margin-top: 14px; padding: 14px 16px;
+  background: var(--orange-light); border: 1px solid #fde68a;
+  border-radius: 6px; display: none;
+}
+.weights-panel.visible { display: block; }
+.weights-title { font-size: 12px; font-weight: 600; color: var(--orange); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.4px; }
+.weights-row { display: flex; gap: 16px; flex-wrap: wrap; }
+.weight-field { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 120px; }
+.weight-field label { font-size: 12px; font-weight: 500; color: var(--text-muted); }
+.weight-field input {
+  padding: 6px 10px; border: 1px solid var(--border);
+  border-radius: 6px; font-size: 13px; background: var(--white); outline: none; width: 100%;
+}
+.weight-field input:focus { border-color: var(--orange); }
+
+/* ── PERIOD SELECTOR ── */
+.period-select {
+  padding: 7px 10px; border: 1px solid var(--border);
+  border-radius: 6px; font-size: 13px; background: var(--white);
+  outline: none; min-width: 200px;
+}
+.period-select:focus { border-color: var(--blue); }
+.custom-range {
+  display: none; margin-top: 10px;
+  padding: 12px 14px; background: var(--bg);
+  border: 1px solid var(--border); border-radius: 6px;
+}
+.custom-range.visible { display: flex; gap: 14px; flex-wrap: wrap; }
+
+/* ── SCORE BADGE ── */
+.score-badge {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 6px 14px; background: var(--orange-light);
+  border: 1px solid #fde68a; border-radius: 8px; min-width: 80px;
+}
+.score-value { font-size: 22px; font-weight: 700; color: var(--orange); line-height: 1; }
+.score-label { font-size: 10px; color: var(--orange); font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; margin-top: 2px; }
+
+/* ── LEADERBOARD ── */
+.leaderboard { width: 100%; border-collapse: collapse; margin-top: 4px; }
+.leaderboard th {
+  text-align: left; font-size: 11px; font-weight: 600;
+  color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px;
+  padding: 6px 12px; border-bottom: 2px solid var(--border);
+}
+.leaderboard th.right { text-align: right; }
+.leaderboard td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: middle; }
+.leaderboard td.right { text-align: right; }
+.leaderboard tr:last-child td { border-bottom: none; }
+.leaderboard tr:hover td { background: var(--bg); }
+.rank-num { font-weight: 700; color: var(--text-muted); font-size: 14px; }
+.rank-1 .rank-num { color: #b45309; }
+.rank-2 .rank-num { color: #6b7280; }
+.rank-3 .rank-num { color: #92400e; }
+.lb-score { font-weight: 700; font-size: 15px; color: var(--orange); }
+.lb-member { display: flex; align-items: center; gap: 8px; }
+.lb-breakdown { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+
+/* ── ADMIN ── */
+.admin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 700px) { .admin-grid { grid-template-columns: 1fr; } }
+.admin-card {
+  background: var(--white); border: 1px solid var(--border);
+  border-radius: 8px; overflow: hidden;
+}
+.admin-card-header {
+  padding: 14px 20px; background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.admin-card-title { font-size: 14px; font-weight: 600; }
+.admin-card-subtitle { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+.admin-card-body { padding: 20px; }
+.export-info {
+  font-size: 13px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.6;
+}
+.export-info code {
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 4px; padding: 1px 6px; font-size: 12px; color: var(--text);
+}
+.drop-zone {
+  border: 2px dashed var(--border); border-radius: 8px;
+  padding: 32px 20px; text-align: center; cursor: pointer;
+  transition: all 0.2s; position: relative;
+}
+.drop-zone:hover, .drop-zone.drag-over { border-color: var(--blue); background: var(--blue-light); }
+.drop-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.drop-zone-icon { font-size: 28px; display: block; margin-bottom: 8px; }
+.drop-zone-label { font-size: 13px; font-weight: 500; color: var(--text-muted); }
+.drop-zone-sub { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+.selected-file {
+  display: none; margin-top: 12px; padding: 10px 14px;
+  background: var(--blue-light); border: 1px solid #bfdbfe;
+  border-radius: 6px; font-size: 13px; align-items: center; gap: 10px;
+}
+.selected-file.visible { display: flex; }
+.selected-file-name { flex: 1; font-weight: 500; }
+.restore-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.4); z-index: 200;
+  align-items: center; justify-content: center;
+}
+.restore-overlay.visible { display: flex; }
+.restore-dialog {
+  background: var(--white); border-radius: 10px;
+  padding: 28px 32px; max-width: 420px; width: 90%;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.18);
+}
+.restore-dialog h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+.restore-dialog p  { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; line-height: 1.5; }
+.restore-dialog .dialog-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.role-admin { background: #fef2f2; color: var(--red); }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════
+     LOGIN
+══════════════════════════════════════════════ -->
+<div id="screen-login">
+  <div class="login-card">
+    <div class="login-logo">
+      <span class="logo-icon">📊</span>
+      <h1>Contribution Tracker</h1>
+      <p>Track activity across GitHub &amp; GitLab</p>
+    </div>
+    <p class="error-msg" id="login-error">Invalid username or password.</p>
+    <div class="form-group">
+      <label for="inp-username">Username</label>
+      <input type="text" id="inp-username" placeholder="Enter username" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label for="inp-password">Password</label>
+      <input type="password" id="inp-password" placeholder="Enter password">
+    </div>
+    <button class="btn btn-primary btn-block" style="margin-top:4px" onclick="doLogin()">Sign in</button>
+    <div class="login-hint">
+      <strong>Demo accounts</strong>
+      <span><b>alice</b> / secret → regular user (sees own data)</span><br>
+      <span><b>carol</b> / secret → manager (sees full team)</span><br>
+      <span><b>admin</b> / secret → administrator (backup &amp; restore)</span>
+    </div>
+  </div>
+</div>
+
+<!-- Restore confirmation dialog -->
+<div class="restore-overlay" id="restore-overlay">
+  <div class="restore-dialog">
+    <h3>⚠ Confirm Restore</h3>
+    <p>This will overwrite all current application data with the selected backup. This action cannot be undone.</p>
+    <div class="dialog-actions">
+      <button class="btn btn-secondary" onclick="closeRestore()">Cancel</button>
+      <button class="btn btn-primary" id="confirm-restore-btn" onclick="confirmRestore()">Restore</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     APP
+══════════════════════════════════════════════ -->
+<div id="screen-app">
+
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="navbar-brand">
+      <span class="logo">📊</span> Contribution Tracker
+    </div>
+    <div class="navbar-user">
+      <div class="avatar" id="nav-avatar"></div>
+      <div>
+        <div style="font-size:14px;font-weight:600" id="nav-name"></div>
+        <span class="role-badge" id="nav-role-badge"></span>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="doLogout()">Sign out</button>
+    </div>
+  </nav>
+
+  <div class="app-body">
+
+    <!-- Sidebar: repositories -->
+    <aside class="sidebar">
+      <div class="sidebar-title">My Repositories</div>
+      <div id="repo-list"></div>
+
+      <button class="btn btn-secondary btn-sm btn-block" style="margin-top:6px" onclick="toggleAddRepo()">
+        + Add repository
+      </button>
+
+      <div class="add-repo-form" id="add-repo-form">
+        <input type="text" id="new-repo-name" placeholder="owner/repo-name">
+        <select id="new-repo-platform">
+          <option value="github">GitHub</option>
+          <option value="gitlab">GitLab</option>
+        </select>
+        <div class="add-repo-actions">
+          <button class="btn btn-primary btn-sm" onclick="addRepo()">Add</button>
+          <button class="btn btn-secondary btn-sm" onclick="toggleAddRepo()">Cancel</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="main-content">
+      <div class="page-header">
+        <div class="page-title" id="page-title"></div>
+        <div class="page-subtitle" id="page-subtitle"></div>
+      </div>
+
+      <!-- Report form -->
+      <div class="report-form">
+        <div class="report-form-title">Generate Report</div>
+
+        <!-- Report type selector (manager only) -->
+        <div class="hidden" id="report-type-row" style="margin-bottom:16px">
+          <div style="font-size:12px;font-weight:500;color:var(--text-muted);margin-bottom:8px">Report type</div>
+          <div class="report-type-tabs">
+            <button class="report-tab active" id="tab-activity" onclick="setReportType('activity')">Activity Log</button>
+            <button class="report-tab" id="tab-weighted" onclick="setReportType('weighted')">Weighted Score</button>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">
+            <label>Period</label>
+            <select class="period-select" id="filter-period" onchange="onPeriodChange()">
+              <option value="last30">Last 30 days</option>
+              <option value="last7">Last 7 days</option>
+              <option value="currentQuarter">Current quarter</option>
+              <option value="lastQuarter">Last quarter</option>
+              <option value="currentYear">Current year</option>
+              <option value="lastYear">Last year</option>
+              <option value="custom">Custom range…</option>
+            </select>
+          </div>
+          <div class="form-field hidden" id="field-member">
+            <label>Team member</label>
+            <select id="filter-member">
+              <option value="">All members</option>
+            </select>
+          </div>
+        </div>
+        <div class="custom-range" id="custom-range">
+          <div class="form-field">
+            <label>From</label>
+            <input type="date" id="filter-since">
+          </div>
+          <div class="form-field">
+            <label>To</label>
+            <input type="date" id="filter-until">
+          </div>
+        </div>
+        <div class="activity-types">
+          <div class="activity-types-label">Activity types</div>
+          <div class="checkbox-group">
+            <label class="checkbox-label"><input type="checkbox" id="chk-commit" checked> Commits</label>
+            <label class="checkbox-label"><input type="checkbox" id="chk-issue"  checked> Issues</label>
+            <label class="checkbox-label"><input type="checkbox" id="chk-review" checked> PR Reviews</label>
+          </div>
+        </div>
+
+        <!-- Weight inputs (weighted score mode only) -->
+        <div class="weights-panel" id="weights-panel">
+          <div class="weights-title">⚖ Activity Weights</div>
+          <div class="weights-row">
+            <div class="weight-field">
+              <label>Commit weight</label>
+              <input type="number" id="w-commit" value="1.0" min="0" max="10" step="0.1">
+            </div>
+            <div class="weight-field">
+              <label>Issue weight</label>
+              <input type="number" id="w-issue" value="0.5" min="0" max="10" step="0.1">
+            </div>
+            <div class="weight-field">
+              <label>PR Review weight</label>
+              <input type="number" id="w-review" value="0.8" min="0" max="10" step="0.1">
+            </div>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" onclick="generateReport()">⚡ Generate Report</button>
+          <span class="form-hint" id="form-hint"></span>
+        </div>
+      </div>
+
+      <!-- Streaming results -->
+      <div class="results-area" id="results-area"></div>
+
+      <!-- Admin panel (admin role only) -->
+      <div id="admin-panel" class="hidden">
+        <div class="admin-grid">
+
+          <!-- Export -->
+          <div class="admin-card">
+            <div class="admin-card-header">
+              <div class="admin-card-title">📤 Export Backup</div>
+              <div class="admin-card-subtitle">Download all application data as a JSON file</div>
+            </div>
+            <div class="admin-card-body">
+              <p class="export-info">
+                The export contains all <code>users</code>, <code>accounts</code>, <code>teams</code>,
+                and <code>repositories</code> in a single JSON file.<br><br>
+                Activities are fetched live from GitHub / GitLab and are not included.
+              </p>
+              <button class="btn btn-primary" id="export-btn" onclick="exportBackup()" style="width:100%;justify-content:center">
+                ↓ Download backup.json
+              </button>
+            </div>
+          </div>
+
+          <!-- Import / Restore -->
+          <div class="admin-card">
+            <div class="admin-card-header">
+              <div class="admin-card-title">📥 Restore from File</div>
+              <div class="admin-card-subtitle">Upload a previously exported JSON backup</div>
+            </div>
+            <div class="admin-card-body">
+              <div class="drop-zone" id="drop-zone"
+                   ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
+                <input type="file" accept=".json,application/json" id="backup-file-input" onchange="onFileSelected(event)">
+                <span class="drop-zone-icon">🗂</span>
+                <div class="drop-zone-label">Drop a JSON file here</div>
+                <div class="drop-zone-sub">or click to browse</div>
+              </div>
+              <div class="selected-file" id="selected-file">
+                <span>📄</span>
+                <span class="selected-file-name" id="selected-file-name"></span>
+                <button class="btn btn-secondary btn-sm" onclick="clearFile()">✕</button>
+              </div>
+              <button class="btn btn-primary" id="restore-btn" onclick="openRestore()"
+                      style="width:100%;justify-content:center;margin-top:12px" disabled>
+                ↺ Restore from this file
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════
+// MOCK DATA
+// ══════════════════════════════════════════════════════
+
+const ACCOUNTS = {
+  alice: { password: 'secret', role: 'USER',    displayName: 'Alice Chen',   color: '#0969da', team: null },
+  carol: { password: 'secret', role: 'MANAGER', displayName: 'Carol Rivera', color: '#8250df', team: ['alice', 'bob', 'dave'] },
+  admin: { password: 'secret', role: 'ADMIN',   displayName: 'App Admin',    color: '#cf222e', team: null },
+};
+
+const INITIAL_REPOS = {
+  alice: [
+    { name: 'org/frontend-app',  platform: 'github' },
+    { name: 'org/api-service',   platform: 'github' },
+  ],
+  carol: [
+    { name: 'org/frontend-app',  platform: 'github' },
+    { name: 'org/api-service',   platform: 'github' },
+    { name: 'org/data-pipeline', platform: 'gitlab' },
+  ],
+};
+
+const TEAM_INFO = {
+  alice: { displayName: 'Alice Chen',  color: '#0969da' },
+  bob:   { displayName: 'Bob Martín',  color: '#1a7f37' },
+  dave:  { displayName: 'Dave Kim',    color: '#9a6700' },
+};
+
+const ACTIVITIES = {
+  alice: [
+    { type: 'commit', icon: '⬡', title: 'fix: resolve null pointer in auth middleware',     repo: 'org/frontend-app', meta: 'main · +12 −3',   date: '2 days ago' },
+    { type: 'commit', icon: '⬡', title: 'feat: add token expiry validation',                repo: 'org/api-service',  meta: 'main · +45 −8',   date: '3 days ago' },
+    { type: 'review', icon: '👁', title: 'Review: Add pagination to user list endpoint',    repo: 'org/api-service',  meta: 'APPROVED · PR #142', date: '4 days ago' },
+    { type: 'issue',  icon: '◎', title: 'Button tooltip not shown on mobile Safari',        repo: 'org/frontend-app', meta: 'CLOSED · #88',    date: '5 days ago' },
+    { type: 'commit', icon: '⬡', title: 'refactor: extract auth context into custom hook',  repo: 'org/frontend-app', meta: 'main · +30 −22',  date: '6 days ago' },
+  ],
+  bob: [
+    { type: 'commit', icon: '⬡', title: 'chore: bump all dependencies to latest minor',     repo: 'org/api-service',   meta: 'main · +5 −5',   date: '1 day ago' },
+    { type: 'issue',  icon: '◎', title: 'Rate limiting not applied on /export endpoint',    repo: 'org/api-service',   meta: 'OPEN · #101',    date: '2 days ago' },
+    { type: 'review', icon: '👁', title: 'Review: Migrate CI pipeline to GitHub Actions',   repo: 'org/infra-configs', meta: 'CHANGES_REQUESTED · PR #19', date: '3 days ago' },
+    { type: 'commit', icon: '⬡', title: 'fix: correct timezone handling in scheduler',      repo: 'org/api-service',   meta: 'main · +18 −6',  date: '5 days ago' },
+  ],
+  dave: [
+    { type: 'commit', icon: '⬡', title: 'feat: add incremental load mode to ETL pipeline', repo: 'org/data-pipeline', meta: 'main · +120 −14', date: '1 day ago' },
+    { type: 'commit', icon: '⬡', title: 'fix: handle empty partitions gracefully',          repo: 'org/data-pipeline', meta: 'main · +8 −2',   date: '2 days ago' },
+    { type: 'review', icon: '👁', title: 'Review: Add S3 sink connector',                   repo: 'org/data-pipeline', meta: 'APPROVED · PR #56', date: '3 days ago' },
+    { type: 'issue',  icon: '◎', title: 'Pipeline fails silently on schema mismatch',      repo: 'org/data-pipeline', meta: 'CLOSED · #44',   date: '4 days ago' },
+    { type: 'commit', icon: '⬡', title: 'docs: update pipeline configuration reference',   repo: 'org/data-pipeline', meta: 'main · +60 −10', date: '6 days ago' },
+  ],
+};
+
+// ══════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════
+
+let session = null;
+const userRepos = {};
+let reportType = 'activity'; // 'activity' | 'weighted'
+
+// ══════════════════════════════════════════════════════
+// AUTH
+// ══════════════════════════════════════════════════════
+
+function doLogin() {
+  const username = document.getElementById('inp-username').value.trim().toLowerCase();
+  const password = document.getElementById('inp-password').value;
+  const errEl = document.getElementById('login-error');
+
+  const account = ACCOUNTS[username];
+  if (!account || account.password !== password) {
+    errEl.style.display = 'block';
+    return;
+  }
+  errEl.style.display = 'none';
+  session = { username, ...account };
+  if (!userRepos[username]) {
+    userRepos[username] = [...(INITIAL_REPOS[username] || [])];
+  }
+  mountApp();
+}
+
+['inp-username', 'inp-password'].forEach(id => {
+  document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+});
+
+function doLogout() {
+  session = null;
+  document.getElementById('screen-app').style.display = 'none';
+  document.getElementById('screen-login').style.display = 'flex';
+  document.getElementById('inp-username').value = '';
+  document.getElementById('inp-password').value = '';
+  document.getElementById('results-area').innerHTML = '';
+}
+
+// ══════════════════════════════════════════════════════
+// APP MOUNT
+// ══════════════════════════════════════════════════════
+
+function mountApp() {
+  document.getElementById('screen-login').style.display = 'none';
+  document.getElementById('screen-app').style.display = 'flex';
+
+  // Navbar
+  const av = document.getElementById('nav-avatar');
+  av.textContent = session.displayName[0];
+  av.style.background = session.color;
+  document.getElementById('nav-name').textContent = session.displayName;
+  const badge = document.getElementById('nav-role-badge');
+  badge.textContent = session.role;
+  const roleClass = { USER: 'role-user', MANAGER: 'role-manager', ADMIN: 'role-admin' };
+  badge.className = 'role-badge ' + (roleClass[session.role] || 'role-user');
+
+  // Show/hide sections by role
+  const isAdmin   = session.role === 'ADMIN';
+  const isManager = session.role === 'MANAGER';
+  document.querySelector('.report-form').classList.toggle('hidden', isAdmin);
+  document.getElementById('results-area').classList.toggle('hidden', isAdmin);
+  document.getElementById('admin-panel').classList.toggle('hidden', !isAdmin);
+  document.querySelector('.sidebar').classList.toggle('hidden', isAdmin);
+
+  if (isAdmin) {
+    document.getElementById('page-title').textContent = 'Administration';
+    document.getElementById('page-subtitle').textContent = 'Manage application data backups and restores.';
+    document.getElementById('report-type-row').classList.add('hidden');
+    return;
+  }
+
+  // Page header
+  if (isManager) {
+    document.getElementById('page-title').textContent = 'Team Report';
+    document.getElementById('page-subtitle').textContent = 'View contribution activity across your entire team.';
+    document.getElementById('field-member').classList.remove('hidden');
+    document.getElementById('report-type-row').classList.remove('hidden');
+    setReportType('activity');
+    const sel = document.getElementById('filter-member');
+    sel.innerHTML = '<option value="">All members</option>';
+    session.team.forEach(u => {
+      const opt = document.createElement('option');
+      opt.value = u;
+      opt.textContent = TEAM_INFO[u].displayName;
+      sel.appendChild(opt);
+    });
+    document.getElementById('form-hint').textContent = 'Results stream in per member as data is fetched from each source.';
+  } else {
+    document.getElementById('page-title').textContent = 'My Activity';
+    document.getElementById('page-subtitle').textContent = 'View your own contribution activity across your tracked repositories.';
+    document.getElementById('field-member').classList.add('hidden');
+    document.getElementById('report-type-row').classList.add('hidden');
+    document.getElementById('form-hint').textContent = 'Your tracked repositories will be used automatically.';
+  }
+
+  document.getElementById('filter-period').value = 'last30';
+  onPeriodChange();
+  renderRepos();
+  document.getElementById('results-area').innerHTML = '';
+}
+
+// ══════════════════════════════════════════════════════
+// REPOSITORIES
+// ══════════════════════════════════════════════════════
+
+function renderRepos() {
+  const repos = userRepos[session.username] || [];
+  const list = document.getElementById('repo-list');
+  if (repos.length === 0) {
+    list.innerHTML = '<div class="no-repos">No repositories added yet.</div>';
+    return;
+  }
+  list.innerHTML = repos.map((r, i) => `
+    <div class="repo-item">
+      <span class="repo-icon">${r.platform === 'github' ? '🐙' : '🦊'}</span>
+      <div class="repo-info">
+        <div class="repo-name" title="${r.name}">${r.name}</div>
+        <div class="repo-platform">${r.platform === 'github' ? 'GitHub' : 'GitLab'}</div>
+      </div>
+      <button class="repo-remove" onclick="removeRepo(${i})" title="Remove">✕</button>
+    </div>
+  `).join('');
+}
+
+function toggleAddRepo() {
+  const form = document.getElementById('add-repo-form');
+  const open = form.style.display === 'block';
+  form.style.display = open ? 'none' : 'block';
+  if (!open) document.getElementById('new-repo-name').focus();
+}
+
+function addRepo() {
+  const name = document.getElementById('new-repo-name').value.trim();
+  const platform = document.getElementById('new-repo-platform').value;
+  if (!name) return;
+  userRepos[session.username].push({ name, platform });
+  document.getElementById('new-repo-name').value = '';
+  document.getElementById('add-repo-form').style.display = 'none';
+  renderRepos();
+}
+
+function removeRepo(i) {
+  userRepos[session.username].splice(i, 1);
+  renderRepos();
+}
+
+// ══════════════════════════════════════════════════════
+// PERIOD RESOLUTION
+// ══════════════════════════════════════════════════════
+
+function onPeriodChange() {
+  const period = document.getElementById('filter-period').value;
+  const customEl = document.getElementById('custom-range');
+  if (period === 'custom') {
+    customEl.classList.add('visible');
+    return;
+  }
+  customEl.classList.remove('visible');
+  const { since, until } = resolvePeriod(period);
+  document.getElementById('filter-since').value = since;
+  document.getElementById('filter-until').value = until;
+}
+
+function resolvePeriod(period) {
+  const today = new Date();
+  const fmt = d => d.toISOString().slice(0, 10);
+
+  const startOfQuarter = d => {
+    const q = Math.floor(d.getMonth() / 3);
+    return new Date(d.getFullYear(), q * 3, 1);
+  };
+
+  switch (period) {
+    case 'last7': {
+      const s = new Date(today); s.setDate(s.getDate() - 6);
+      return { since: fmt(s), until: fmt(today) };
+    }
+    case 'last30': {
+      const s = new Date(today); s.setDate(s.getDate() - 29);
+      return { since: fmt(s), until: fmt(today) };
+    }
+    case 'currentQuarter': {
+      return { since: fmt(startOfQuarter(today)), until: fmt(today) };
+    }
+    case 'lastQuarter': {
+      const sq = startOfQuarter(today);
+      const end = new Date(sq); end.setDate(end.getDate() - 1);
+      return { since: fmt(startOfQuarter(end)), until: fmt(end) };
+    }
+    case 'currentYear': {
+      return { since: `${today.getFullYear()}-01-01`, until: fmt(today) };
+    }
+    case 'lastYear': {
+      const y = today.getFullYear() - 1;
+      return { since: `${y}-01-01`, until: `${y}-12-31` };
+    }
+    default:
+      return { since: fmt(today), until: fmt(today) };
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// REPORT TYPE
+// ══════════════════════════════════════════════════════
+
+function setReportType(type) {
+  reportType = type;
+  document.getElementById('tab-activity').classList.toggle('active', type === 'activity');
+  document.getElementById('tab-weighted').classList.toggle('active', type === 'weighted');
+  document.getElementById('weights-panel').classList.toggle('visible', type === 'weighted');
+  document.getElementById('form-hint').textContent = type === 'weighted'
+    ? 'Score = commits × weight + issues × weight + reviews × weight, per member.'
+    : 'Results stream in per member as data is fetched from each source.';
+}
+
+// ══════════════════════════════════════════════════════
+// REPORT GENERATION  (simulated SSE stream)
+// ══════════════════════════════════════════════════════
+
+function generateReport() {
+  const area = document.getElementById('results-area');
+  area.innerHTML = '';
+
+  const period = document.getElementById('filter-period').value;
+  const { since, until } = period === 'custom'
+    ? { since: document.getElementById('filter-since').value, until: document.getElementById('filter-until').value }
+    : resolvePeriod(period);
+  const showCommits = document.getElementById('chk-commit').checked;
+  const showIssues  = document.getElementById('chk-issue').checked;
+  const showReviews = document.getElementById('chk-review').checked;
+
+  const weights = {
+    commit: parseFloat(document.getElementById('w-commit').value) || 1,
+    issue:  parseFloat(document.getElementById('w-issue').value)  || 0.5,
+    review: parseFloat(document.getElementById('w-review').value) || 0.8,
+  };
+
+  // Determine which users to fetch
+  let targets;
+  if (session.role === 'MANAGER') {
+    const pick = document.getElementById('filter-member').value;
+    targets = pick ? [pick] : session.team;
+  } else {
+    targets = [session.username];
+  }
+
+  // Status bar (appended first; user cards insert before it)
+  const statusEl = document.createElement('div');
+  statusEl.className = 'stream-status';
+  statusEl.innerHTML = `<div class="pulse"></div><span id="stream-msg">Opening stream…</span>`;
+  area.appendChild(statusEl);
+
+  // Simulate SSE: emit one UserReportEvent per target, then ReportCompleteEvent
+  let t = 400;
+  const allFiltered = [];
+  const userResults = [];
+
+  targets.forEach(username => {
+    const info = TEAM_INFO[username] || { displayName: session.displayName, color: session.color };
+    const raw  = ACTIVITIES[username] || [];
+    const filtered = raw.filter(a =>
+      (a.type === 'commit' && showCommits) ||
+      (a.type === 'issue'  && showIssues)  ||
+      (a.type === 'review' && showReviews)
+    );
+    allFiltered.push(...filtered);
+
+    const score = computeScore(filtered, weights);
+    userResults.push({ username, info, filtered, score });
+
+    setTimeout(() => {
+      document.getElementById('stream-msg').textContent =
+        `Fetching activities for ${info.displayName}…`;
+    }, t);
+    t += 900;
+
+    setTimeout(() => {
+      const card = buildUserCard(username, info, filtered, since, until, score);
+      area.insertBefore(card, statusEl);
+    }, t);
+    t += 200;
+  });
+
+  setTimeout(() => {
+    area.insertBefore(buildSummaryCard(userResults, allFiltered, weights), statusEl);
+    statusEl.className = 'stream-status done';
+    document.getElementById('stream-msg').textContent =
+      `Report complete — ${allFiltered.length} activities across ${targets.length} ${targets.length === 1 ? 'member' : 'members'}.`;
+  }, t + 300);
+}
+
+// ══════════════════════════════════════════════════════
+// BACKUP / RESTORE (admin)
+// ══════════════════════════════════════════════════════
+
+let selectedBackupFile = null;
+
+function exportBackup() {
+  const btn = document.getElementById('export-btn');
+  btn.textContent = 'Generating…';
+  btn.disabled = true;
+
+  setTimeout(() => {
+    const payload = {
+      metadata: {
+        appVersion: '1.0.0',
+        exportedAt: new Date().toISOString(),
+        exportedBy: session.username,
+      },
+      accounts: [
+        { id: 'u1', username: 'alice', role: 'USER',    displayName: 'Alice Chen' },
+        { id: 'u2', username: 'carol', role: 'MANAGER', displayName: 'Carol Rivera' },
+      ],
+      teams: [
+        { id: 't1', name: 'Engineering', manager: 'carol', members: ['alice', 'bob', 'dave'] },
+      ],
+      repositories: [
+        { id: 'r1', name: 'org/frontend-app', platform: 'GITHUB' },
+        { id: 'r2', name: 'org/api-service',  platform: 'GITHUB' },
+      ],
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `backup-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    btn.textContent = '↓ Download backup.json';
+    btn.disabled = false;
+  }, 800);
+}
+
+function onFileSelected(event) {
+  const file = event.target.files[0];
+  if (file) setSelectedFile(file);
+}
+
+function onDragOver(event) {
+  event.preventDefault();
+  document.getElementById('drop-zone').classList.add('drag-over');
+}
+
+function onDragLeave(event) {
+  document.getElementById('drop-zone').classList.remove('drag-over');
+}
+
+function onDrop(event) {
+  event.preventDefault();
+  document.getElementById('drop-zone').classList.remove('drag-over');
+  const file = event.dataTransfer.files[0];
+  if (file) setSelectedFile(file);
+}
+
+function setSelectedFile(file) {
+  selectedBackupFile = file;
+  document.getElementById('selected-file-name').textContent = file.name;
+  document.getElementById('selected-file').classList.add('visible');
+  document.getElementById('restore-btn').disabled = false;
+}
+
+function clearFile() {
+  selectedBackupFile = null;
+  document.getElementById('selected-file').classList.remove('visible');
+  document.getElementById('restore-btn').disabled = true;
+  document.getElementById('backup-file-input').value = '';
+}
+
+function openRestore() {
+  if (!selectedBackupFile) return;
+  document.querySelector('.restore-dialog p').textContent =
+    `This will import "${selectedBackupFile.name}" and overwrite all current application data. This action cannot be undone.`;
+  document.getElementById('restore-overlay').classList.add('visible');
+}
+
+function closeRestore() {
+  document.getElementById('restore-overlay').classList.remove('visible');
+}
+
+function confirmRestore() {
+  const btn = document.getElementById('confirm-restore-btn');
+  btn.textContent = 'Restoring…';
+  btn.disabled = true;
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      setTimeout(() => {
+        closeRestore();
+        btn.textContent = 'Restore';
+        btn.disabled = false;
+        clearFile();
+        alert(`✓ Restore complete.\n\nImported ${data.accounts?.length ?? 0} accounts, ${data.teams?.length ?? 0} teams, ${data.repositories?.length ?? 0} repositories.\nExported at: ${data.metadata?.exportedAt ?? 'unknown'}`);
+      }, 1200);
+    } catch {
+      btn.textContent = 'Restore';
+      btn.disabled = false;
+      alert('✗ Invalid backup file. Please upload a valid JSON export.');
+    }
+  };
+  reader.readAsText(selectedBackupFile);
+}
+
+function computeScore(activities, weights) {
+  const c = activities.filter(a => a.type === 'commit').length;
+  const i = activities.filter(a => a.type === 'issue').length;
+  const r = activities.filter(a => a.type === 'review').length;
+  return Math.round((c * weights.commit + i * weights.issue + r * weights.review) * 10) / 10;
+}
+
+// ── Build a per-user card (UserReportDTO) ──────────────
+
+function buildUserCard(username, info, activities, since, until, score) {
+  const n = t => activities.filter(a => a.type === t).length;
+  const isWeighted = reportType === 'weighted';
+
+  const card = document.createElement('div');
+  card.className = 'user-report-card';
+  card.innerHTML = `
+    <div class="card-header">
+      <div class="avatar" style="background:${info.color}">${info.displayName[0]}</div>
+      <div class="card-user-info">
+        <div class="card-user-name">${info.displayName}</div>
+        <div class="card-user-meta">@${username} &nbsp;·&nbsp; ${since} → ${until}</div>
+      </div>
+      <div class="stat-pills">
+        <span class="stat-pill pill-commit">⬡ ${n('commit')} commits</span>
+        <span class="stat-pill pill-issue">◎ ${n('issue')} issues</span>
+        <span class="stat-pill pill-review">👁 ${n('review')} reviews</span>
+      </div>
+      ${isWeighted ? `
+      <div class="score-badge">
+        <div class="score-value">${score}</div>
+        <div class="score-label">Score</div>
+      </div>` : ''}
+    </div>
+    <div class="card-body">
+      ${activities.length === 0
+        ? `<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">No matching activity in this period.</div>`
+        : `<div class="activity-list">${activities.map(a => `
+            <div class="activity-item">
+              <span class="activity-icon">${a.icon}</span>
+              <div class="activity-content">
+                <div class="activity-title">${a.title}</div>
+                <div class="activity-meta">
+                  <span>${a.repo}</span>
+                  <span>${a.meta}</span>
+                </div>
+              </div>
+              <div class="activity-date">${a.date}</div>
+            </div>`).join('')}
+          </div>`
+      }
+    </div>`;
+  return card;
+}
+
+// ── Build aggregate summary card (ReportCompleteEvent) ──
+
+function buildSummaryCard(userResults, activities, weights) {
+  const commits = activities.filter(a => a.type === 'commit').length;
+  const issues  = activities.filter(a => a.type === 'issue').length;
+  const reviews = activities.filter(a => a.type === 'review').length;
+  const isWeighted = reportType === 'weighted';
+
+  const card = document.createElement('div');
+  card.className = 'summary-card';
+
+  const statsHtml = `
+    <div class="summary-grid">
+      <div class="summary-stat stat-blue">
+        <div class="stat-value">${activities.length}</div>
+        <div class="stat-label">Total activities</div>
+      </div>
+      <div class="summary-stat stat-blue">
+        <div class="stat-value">${commits}</div>
+        <div class="stat-label">Commits</div>
+      </div>
+      <div class="summary-stat stat-green">
+        <div class="stat-value">${issues}</div>
+        <div class="stat-label">Issues</div>
+      </div>
+      <div class="summary-stat stat-purple">
+        <div class="stat-value">${reviews}</div>
+        <div class="stat-label">PR Reviews</div>
+      </div>
+    </div>`;
+
+  let leaderboardHtml = '';
+  if (isWeighted && userResults.length > 1) {
+    const sorted = [...userResults].sort((a, b) => b.score - a.score);
+    leaderboardHtml = `
+      <div style="margin-top:20px">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;color:var(--text-muted);margin-bottom:10px">Team Ranking</div>
+        <table class="leaderboard">
+          <thead>
+            <tr>
+              <th style="width:40px">#</th>
+              <th>Member</th>
+              <th class="right">Commits</th>
+              <th class="right">Issues</th>
+              <th class="right">Reviews</th>
+              <th class="right">Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${sorted.map((r, i) => `
+              <tr class="rank-${i + 1}">
+                <td><span class="rank-num">${i + 1}</span></td>
+                <td>
+                  <div class="lb-member">
+                    <div class="avatar" style="background:${r.info.color};width:24px;height:24px;font-size:11px">${r.info.displayName[0]}</div>
+                    ${r.info.displayName}
+                  </div>
+                </td>
+                <td class="right lb-breakdown">${r.filtered.filter(a => a.type === 'commit').length} × ${weights.commit}</td>
+                <td class="right lb-breakdown">${r.filtered.filter(a => a.type === 'issue').length} × ${weights.issue}</td>
+                <td class="right lb-breakdown">${r.filtered.filter(a => a.type === 'review').length} × ${weights.review}</td>
+                <td class="right"><span class="lb-score">${r.score}</span></td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  card.innerHTML = `
+    <h3>Report Summary · ${userResults.length} ${userResults.length === 1 ? 'member' : 'members'}</h3>
+    ${statsHtml}
+    ${leaderboardHtml}`;
+  return card;
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,78 @@
+@startuml deployment
+
+skinparam defaultTextAlignment center
+skinparam rectangleBorderRadius 6
+skinparam rectangleBorderColor #d0d7de
+skinparam arrowColor #57606a
+skinparam arrowThickness 1.5
+skinparam cloudBorderColor #0969da
+skinparam cloudBackgroundColor #dbeafe
+skinparam actorBorderColor #57606a
+skinparam noteBorderColor #d0d7de
+skinparam noteBackgroundColor #f6f8fa
+
+actor "Browser" as browser
+
+' ─────────────────────────────────────────────
+'  CONTAINERS
+' ─────────────────────────────────────────────
+
+rectangle "Container: frontend\nnginx · :80" as frontend #e8f4fd {
+  component "Static Assets\nHTML · CSS · JS" as assets
+}
+
+rectangle "Container: api\nJVM · Spring Boot · :8080" as api #fff8e1 {
+  component "Presentation\nLoginController · ActivityController (SSE)\nAdminController" as presentation
+  component "Application\nAuthService · ActivityService\nBackupService · ActivitySourceFactory" as application
+  component "Infrastructure\nJpaRepositories · GitHub/GitLabSource" as infra_comp
+
+  presentation -down-> application
+  application -down-> infra_comp
+}
+
+rectangle "Container: db\nPostgreSQL · :5432" as db #f0fdf4 {
+  component "users\naccounts\nteams\nrepositories" as schema
+}
+
+cloud "GitHub API\napi.github.com" as github
+cloud "GitLab API\ngitlab.com" as gitlab
+
+' ─────────────────────────────────────────────
+'  CONNECTIONS
+' ─────────────────────────────────────────────
+
+browser      -right->  frontend   : HTTPS
+browser      -right->  api        : HTTPS · SSE
+frontend     -right->  api        : /api (reverse proxy)
+api          -down->   db         : JDBC
+infra_comp   -right->  github     : REST
+infra_comp   -right->  gitlab        : REST
+
+' ─────────────────────────────────────────────
+'  NOTES
+' ─────────────────────────────────────────────
+
+note bottom of frontend
+  Serves static build.
+  No business logic.
+end note
+
+note bottom of api
+  Stateless — scales horizontally.
+  Fetches activity data on demand;
+  no activity data stored.
+end note
+
+note bottom of db
+  Persists: UserAccount, User,
+  Team, Repository (tracked).
+  Activities are never stored.
+end note
+
+note right of api
+  Backup = JSON file downloaded by admin.
+  Restore = admin uploads the same file.
+  No server-side backup storage needed.
+end note
+
+@enduml
