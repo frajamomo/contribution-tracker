@@ -1,0 +1,124 @@
+@startuml use_cases
+
+skinparam actorBorderColor #57606a
+skinparam rectangleBorderColor #d0d7de
+skinparam usecaseBorderColor #0969da
+skinparam usecaseBackgroundColor #dbeafe
+skinparam arrowColor #57606a
+skinparam arrowThickness 1.5
+
+left to right direction
+
+' ─────────────────────────────────────────────
+'  ACTORS
+'  A user can hold one or more roles simultaneously.
+' ─────────────────────────────────────────────
+
+actor "Team Member" as member
+actor "Team Leader" as leader
+actor "Administrator" as admin
+
+' ─────────────────────────────────────────────
+'  SYSTEM BOUNDARY
+' ─────────────────────────────────────────────
+
+rectangle "Contribution Tracker" {
+
+  ' ── Authentication ──
+  usecase "Log in" as UC_LOGIN
+  usecase "Log out" as UC_LOGOUT
+
+  ' ── Team Member actions ──
+  usecase "View own\ncontributions report" as UC_OWN_REPORT
+  usecase "Configure own\nprofile (GitHub username)" as UC_PROFILE
+
+  ' ── Team Leader actions (extends Team Member) ──
+  usecase "View team\ncontributions report" as UC_TEAM_REPORT
+  usecase "Manage team\nrepositories" as UC_MANAGE_REPOS
+
+  ' ── Administrator actions ──
+  usecase "Backup database" as UC_BACKUP
+  usecase "Restore database" as UC_RESTORE
+  usecase "Configure\ncontribution sources" as UC_CONFIG
+
+  ' ── Common ──
+  usecase "Select report type" as UC_REPORT_TYPE
+  usecase "Filter report\nresults dynamically" as UC_FILTER
+  usecase "Select date range" as UC_DATE_RANGE
+
+  ' ── System-internal ──
+  usecase "Fetch contributions\nfrom git server" as UC_FETCH
+  usecase "Stream results\nvia SSE" as UC_STREAM
+}
+
+' ─────────────────────────────────────────────
+'  ASSOCIATIONS
+' ─────────────────────────────────────────────
+
+member --> UC_LOGIN
+member --> UC_LOGOUT
+member --> UC_OWN_REPORT
+member --> UC_PROFILE
+
+leader --> UC_LOGIN
+leader --> UC_LOGOUT
+leader --> UC_TEAM_REPORT
+leader --> UC_MANAGE_REPOS
+leader --> UC_PROFILE
+
+admin --> UC_LOGIN
+admin --> UC_LOGOUT
+admin --> UC_BACKUP
+admin --> UC_RESTORE
+admin --> UC_CONFIG
+
+' ── Include / Extend relationships ──
+
+UC_OWN_REPORT ..> UC_DATE_RANGE   : <<include>>
+UC_OWN_REPORT ..> UC_REPORT_TYPE  : <<include>>
+UC_OWN_REPORT ..> UC_FILTER       : <<include>>
+UC_OWN_REPORT ..> UC_FETCH        : <<include>>
+UC_OWN_REPORT ..> UC_STREAM       : <<include>>
+
+UC_TEAM_REPORT ..> UC_DATE_RANGE  : <<include>>
+UC_TEAM_REPORT ..> UC_REPORT_TYPE : <<include>>
+UC_TEAM_REPORT ..> UC_FILTER      : <<include>>
+UC_TEAM_REPORT ..> UC_FETCH       : <<include>>
+UC_TEAM_REPORT ..> UC_STREAM      : <<include>>
+
+' ─────────────────────────────────────────────
+'  NOTES
+' ─────────────────────────────────────────────
+
+note right of leader
+  A Team Leader is also a
+  Team Member; roles are
+  additive. The leader can
+  see contributions for every
+  member of teams they belong to.
+end note
+
+note right of admin
+  Administrator manages
+  operational data only.
+  Contribution data is never
+  stored — it is fetched live
+  from configured git servers.
+end note
+
+note bottom of UC_FETCH
+  Contributions are fetched
+  only for repositories
+  configured in the team.
+  Extensible to new git
+  server platforms.
+end note
+
+note bottom of UC_REPORT_TYPE
+  Initially: activity log.
+  Extensible to other
+  report types (e.g.
+  weighted score).
+end note
+
+@enduml

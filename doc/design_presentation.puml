@@ -1,0 +1,187 @@
+@startuml design_presentation
+
+skinparam packageStyle rectangle
+skinparam classAttributeIconSize 0
+
+title Presentation Layer (MVC — Controller)
+
+' ─────────────────────────────────────────────
+'  Referenced Application ports (defined in design_application)
+'  Handlers depend on port interfaces, not concrete
+'  service classes (Dependency Inversion Principle).
+' ─────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  TEAM_LEADER
+  TEAM_MEMBER
+}
+
+package Application <<Rectangle>> #f0f0f0 {
+  interface AuthServicePort <<port>>
+  interface ReportServicePort <<port>>
+  interface BackupServicePort <<port>>
+  interface UserRepository <<port>>
+  interface TeamRepository <<port>>
+  interface ConfigRepository <<port>>
+}
+
+' ─────────────────────────────────────────────
+'  PRESENTATION (MVC — Controller layer)
+'  Go HTTP handlers using Chi router.
+'  The View is the frontend SPA served by nginx.
+'
+'  Design patterns used:
+'    MVC                  — Handlers are Controllers; frontend SPA is the View
+'    DTO                  — Maps domain objects to wire-format JSON
+'    RBAC                 — Middleware enforces role-based access
+'    Observer             — SSE streaming pushes events to client
+'    Dependency Inversion — Handlers depend on port interfaces, not concrete services
+'    Single Responsibility — Each handler owns one functional area
+' ─────────────────────────────────────────────
+package Presentation {
+
+  ' ── Middleware ───────────────────────────────
+
+  class AuthMiddleware {
+    -jwtSecret: Bytes
+    +requireAuth(next: Handler): Handler
+    +requireRole(roles: Set<Role>, next: Handler): Handler
+  }
+
+  note right of AuthMiddleware
+    Extracts JWT claims, injects
+    AuthContext into request context.
+    requireRole checks the caller
+    holds at least one of the
+    required roles.
+  end note
+
+  ' ── Handlers (Controllers) ──────────────────
+  ' Each handler has a single responsibility (SRP).
+
+  class AuthHandler {
+    -authService: AuthServicePort
+    +login(w: ResponseWriter, r: Request): void
+  }
+
+  class ReportHandler {
+    -reportService: ReportServicePort
+    -userRepo: UserRepository
+    +stream(w: ResponseWriter, r: Request): void
+  }
+
+  note right of ReportHandler
+    POST /api/reports/stream
+    Content-Type: text/event-stream
+    Streams UserReport events via SSE.
+    Scopes data by caller role:
+    • TEAM_MEMBER → own data only
+    • TEAM_LEADER → full team
+  end note
+
+  class BackupHandler {
+    -backupService: BackupServicePort
+    +export(w: ResponseWriter, r: Request): void
+    +restore(w: ResponseWriter, r: Request): void
+  }
+
+  note bottom of BackupHandler
+    Requires ADMIN role.
+    GET /api/admin/backup
+    POST /api/admin/restore
+  end note
+
+  class ConfigHandler {
+    -configRepo: ConfigRepository
+    +get(w: ResponseWriter, r: Request): void
+    +set(w: ResponseWriter, r: Request): void
+  }
+
+  note bottom of ConfigHandler
+    Requires ADMIN role.
+    GET /api/admin/config
+    PUT /api/admin/config
+  end note
+
+  class ProfileHandler {
+    -userRepo: UserRepository
+    +get(w: ResponseWriter, r: Request): void
+    +setPlatformUsername(w: ResponseWriter, r: Request): void
+  }
+
+  note bottom of ProfileHandler
+    Any authenticated user.
+    GET /api/profile
+    PUT /api/profile/platform-username
+  end note
+
+  class TeamHandler {
+    -teamRepo: TeamRepository
+    -userRepo: UserRepository
+    +list(w: ResponseWriter, r: Request): void
+    +addRepository(w: ResponseWriter, r: Request): void
+    +removeRepository(w: ResponseWriter, r: Request): void
+  }
+
+  note bottom of TeamHandler
+    list: any authenticated user.
+    addRepository / removeRepository:
+    requires TEAM_LEADER role +
+    membership in the target team.
+  end note
+
+  ' ── DTOs ────────────────────────────────────
+
+  class ReportRequestDTO {
+    +teamId: String
+    +since: String
+    +until: String
+    +types: List<String>
+    +reportType: String
+  }
+
+  class UserReportDTO {
+    +user: UserDTO
+    +counts: List<ActivityCountDTO>
+    +activities: List<ActivityDTO>
+  }
+
+  class ActivityDTO {
+    +type: String
+    +displayName: String
+    +title: String
+    +url: String
+    +createdAt: String
+  }
+
+  class UserDTO {
+    +id: String
+    +username: String
+    +displayName: String
+    +avatarUrl: String
+  }
+
+  class ActivityCountDTO {
+    +type: String
+    +displayName: String
+    +count: int
+  }
+
+  ' ── Wiring ──────────────────────────────────
+
+  AuthHandler     --> Application.AuthServicePort
+  ReportHandler   --> Application.ReportServicePort
+  BackupHandler   --> Application.BackupServicePort
+  ConfigHandler   --> Application.ConfigRepository
+  ProfileHandler  --> Application.UserRepository
+  TeamHandler     --> Application.TeamRepository
+
+  ReportHandler   ..> ReportRequestDTO  : accepts >
+  ReportHandler   ..> UserReportDTO     : streams >
+  UserReportDTO   "1" *-- "*" ActivityDTO
+  UserReportDTO   "1" *-- "*" ActivityCountDTO
+  UserReportDTO   --> UserDTO
+}
+
+@enduml

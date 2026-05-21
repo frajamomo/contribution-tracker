@@ -1,0 +1,151 @@
+@startuml sequence_report
+
+skinparam sequenceArrowThickness 1.5
+skinparam sequenceParticipantBorderColor #57606a
+skinparam sequenceLifeLineBorderColor #d0d7de
+skinparam sequenceMessageAlignment center
+skinparam noteBorderColor #d0d7de
+skinparam noteBackgroundColor #f6f8fa
+
+title Report Generation — SSE Streaming Sequence
+
+actor Browser
+participant "ReportHandler\n(Controller)" as Handler
+participant "AuthMiddleware\n(RBAC)" as Auth
+participant "ReportService\n(Model)" as Service
+participant "ConfigRepository" as Config
+participant "TeamRepository" as Teams
+participant "UserRepository" as Users
+participant "RepositoryStore" as Repos
+participant "ActivityFetcherRegistry" as Registry
+participant "RepoDiscoverer\n(ISP)" as Discoverer
+participant "ActivityFetcher\n(Strategy)" as Fetcher
+participant "Git Server API\n(GitHub / GitLab)" as GitAPI
+
+' ─────────────────────────────────────────────
+'  1. REQUEST + AUTH
+' ─────────────────────────────────────────────
+
+Browser -> Handler : POST /api/reports/stream\n{teamId, since, until, types}\nAuthorization: Bearer <JWT>
+
+Handler -> Auth : validate JWT, extract roles
+Auth --> Handler : AuthContext\n{accountId, roles}
+
+note right of Auth
+  **RBAC check:**
+  TEAM_MEMBER → restrict to own userId
+  TEAM_LEADER → allow full team
+  ADMIN → allow full team
+end note
+
+Handler -> Users : findByAccountId(accountId)
+Users --> Handler : User (callerId)
+
+Handler -> Handler : build ReportQuery\n{teamId, callerId, roles, since, until, types}
+
+Handler --> Browser : HTTP 200\nContent-Type: text/event-stream
+
+' ─────────────────────────────────────────────
+'  2. REPORT GENERATION (async goroutine)
+' ─────────────────────────────────────────────
+
+Handler -> Service : generateReport(ctx, query, channel)\n[goroutine]
+activate Service
+
+Service -> Config : get("GITHUB_API_KEY")
+Config --> Service : apiKey
+
+Service -> Teams : findById(teamId)
+Teams --> Service : Team {memberIds, repositoryIds}
+
+alt callerRoles contains TEAM_MEMBER only
+  Service -> Users : findById(callerId)
+  Users --> Service : [caller User only]
+else callerRoles contains TEAM_LEADER or ADMIN
+  Service -> Users : findByIds(team.memberIds)
+  Users --> Service : [all team members]
+end
+
+Service -> Repos : findByIds(team.repositoryIds)
+Repos --> Service : teamRepos[]
+
+' ─────────────────────────────────────────────
+'  3. PER-USER FETCHING
+' ─────────────────────────────────────────────
+
+loop for each team member
+  note over Service
+    Resolve platform username from
+    user.platformUsernames map (OCP).
+    Falls back to user.username if
+    no platform-specific mapping exists.
+  end note
+
+  Service -> Registry : build(platform, apiKey)
+  Registry -> Registry : factory.build(apiKey)
+  Registry --> Service : ActivityFetcher\n(may also implement RepoDiscoverer)
+
+  note over Service
+    **ISP:** Check if fetcher also
+    implements RepoDiscoverer.
+    Discovery is optional per platform.
+  end note
+
+  Service -> Discoverer : discoverUserRepos(ctx, platformUsername)
+  Discoverer -> GitAPI : GET /users/{username}/repos
+  GitAPI --> Discoverer : repos[]
+  Discoverer --> Service : discovered repos
+
+  Service -> Repos : upsert(repo) [for each new repo]
+  Service -> Teams : addRepository(teamId, repoId)
+
+  note over Service
+    **Commits:** per-repo fetch
+    (commits endpoint requires a specific repo)
+  end note
+
+  loop for each team repo
+    Service -> Fetcher : fetchForUser(ctx, username,\nrepo, since, until, [COMMIT])
+    Fetcher -> GitAPI : GET /repos/{repo}/commits\n?author={user}&since=...&until=...
+    GitAPI --> Fetcher : commits[]
+    Fetcher --> Service : Activity[]
+  end
+
+  note over Service
+    **Issues, PRs, Reviews:** cross-repo search
+    (Search API queries globally, results filtered
+    to team repos client-side)
+  end note
+
+  Service -> Fetcher : searchActivities(ctx, username,\nteamRepos, since, until,\n[ISSUE, PR, REVIEW])
+  Fetcher -> GitAPI : GET /search/issues\n?q=author:{user}+type:issue+created:...
+  GitAPI --> Fetcher : search results
+  Fetcher -> Fetcher : filter to team repos only
+  Fetcher --> Service : Activity[]
+
+  ' ── Stream result to client ──
+  Service --> Handler : channel ← UserReport\n{user, counts, activities}
+  Handler --> Browser : data: {"type":"USER_REPORT",\n"report":{...}}\n\n
+  note right of Browser
+    Browser updates UI
+    progressively as each
+    user's report arrives.
+  end note
+end
+
+' ─────────────────────────────────────────────
+'  4. COMPLETION
+' ─────────────────────────────────────────────
+
+Service --> Handler : close(channel)
+deactivate Service
+Handler --> Browser : data: {"type":"COMPLETE"}\n\n
+
+note over Browser
+  Browser marks report
+  as complete, enables
+  dynamic filtering of
+  collected results.
+end note
+
+@enduml

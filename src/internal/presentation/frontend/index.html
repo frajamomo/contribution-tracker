@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contribution Tracker</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════
+     LOGIN
+══════════════════════════════════════════════ -->
+<div id="screen-login">
+  <div class="login-card">
+    <div class="login-logo">
+      <span class="logo-icon">📊</span>
+      <h1>Contribution Tracker</h1>
+      <p>Track activity across GitHub &amp; GitLab</p>
+    </div>
+    <p class="error-msg" id="login-error">Invalid username or password.</p>
+    <div class="form-group">
+      <label for="inp-username">Username</label>
+      <input type="text" id="inp-username" placeholder="Enter username" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label for="inp-password">Password</label>
+      <input type="password" id="inp-password" placeholder="Enter password">
+    </div>
+    <button class="btn btn-primary btn-block" style="margin-top:4px" onclick="doLogin()">Sign in</button>
+  </div>
+</div>
+
+<!-- Restore confirmation dialog -->
+<div class="restore-overlay" id="restore-overlay">
+  <div class="restore-dialog">
+    <h3>⚠ Confirm Restore</h3>
+    <p>This will overwrite all current application data with the selected backup. This action cannot be undone.</p>
+    <div class="dialog-actions">
+      <button class="btn btn-secondary" onclick="closeRestore()">Cancel</button>
+      <button class="btn btn-primary" id="confirm-restore-btn" onclick="confirmRestore()">Restore</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     APP
+══════════════════════════════════════════════ -->
+<div id="screen-app">
+
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="navbar-brand">
+      <span class="logo">📊</span> Contribution Tracker
+    </div>
+    <div class="navbar-user">
+      <div class="avatar" id="nav-avatar"></div>
+      <div>
+        <div style="font-size:14px;font-weight:600" id="nav-name"></div>
+        <span class="role-badge" id="nav-role-badge"></span>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="doLogout()">Sign out</button>
+    </div>
+  </nav>
+
+  <div class="app-body">
+
+    <!-- Sidebar: repositories -->
+    <aside class="sidebar">
+      <div class="sidebar-title">Team Repositories</div>
+      <div id="repo-managed-note" class="hidden" style="font-size:11px;color:var(--text-muted);margin-bottom:6px">Managed by your manager</div>
+      <div id="repo-list"></div>
+
+      <button id="add-repo-btn" class="btn btn-secondary btn-sm btn-block" style="margin-top:6px" onclick="toggleAddRepo()">
+        + Add repository
+      </button>
+
+      <div class="add-repo-form" id="add-repo-form">
+        <input type="text" id="new-repo-name" placeholder="owner/repo-name">
+        <select id="new-repo-platform">
+          <option value="github">GitHub</option>
+          <option value="gitlab">GitLab</option>
+        </select>
+        <div class="add-repo-actions">
+          <button class="btn btn-primary btn-sm" onclick="addRepo()">Add</button>
+          <button class="btn btn-secondary btn-sm" onclick="toggleAddRepo()">Cancel</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="main-content">
+      <div class="page-header">
+        <div class="page-title" id="page-title"></div>
+        <div class="page-subtitle" id="page-subtitle"></div>
+      </div>
+
+      <!-- Report form -->
+      <div class="report-form">
+        <div class="report-form-title">Generate Report</div>
+
+        <!-- Report type selector (manager only) -->
+        <div class="hidden" id="report-type-row" style="margin-bottom:16px">
+          <div style="font-size:12px;font-weight:500;color:var(--text-muted);margin-bottom:8px">Report type</div>
+          <div class="report-type-tabs">
+            <button class="report-tab active" id="tab-activity" onclick="setReportType('activity')">Activity Log</button>
+            <button class="report-tab" id="tab-weighted" onclick="setReportType('weighted')">Weighted Score</button>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">
+            <label>Period</label>
+            <select class="period-select" id="filter-period" onchange="onPeriodChange()">
+              <option value="last30">Last 30 days</option>
+              <option value="last7">Last 7 days</option>
+              <option value="currentQuarter">Current quarter</option>
+              <option value="lastQuarter">Last quarter</option>
+              <option value="currentYear">Current year</option>
+              <option value="lastYear">Last year</option>
+              <option value="custom">Custom range…</option>
+            </select>
+          </div>
+          <div class="form-field hidden" id="field-member">
+            <label>Team member</label>
+            <select id="filter-member">
+              <option value="">All members</option>
+            </select>
+          </div>
+        </div>
+        <div class="custom-range" id="custom-range">
+          <div class="form-field">
+            <label>From</label>
+            <input type="date" id="filter-since">
+          </div>
+          <div class="form-field">
+            <label>To</label>
+            <input type="date" id="filter-until">
+          </div>
+        </div>
+        <div class="activity-types">
+          <div class="activity-types-label">Activity types</div>
+          <div class="checkbox-group">
+            <label class="checkbox-label"><input type="checkbox" id="chk-commit" checked> Commits</label>
+            <label class="checkbox-label"><input type="checkbox" id="chk-issue"  checked> Issues</label>
+            <label class="checkbox-label"><input type="checkbox" id="chk-review" checked> PR Reviews</label>
+          </div>
+        </div>
+
+        <!-- Weight inputs (weighted score mode only) -->
+        <div class="weights-panel" id="weights-panel">
+          <div class="weights-title">⚖ Activity Weights</div>
+          <div class="weights-row">
+            <div class="weight-field">
+              <label>Commit weight</label>
+              <input type="number" id="w-commit" value="1.0" min="0" max="10" step="0.1">
+            </div>
+            <div class="weight-field">
+              <label>Issue weight</label>
+              <input type="number" id="w-issue" value="0.5" min="0" max="10" step="0.1">
+            </div>
+            <div class="weight-field">
+              <label>PR Review weight</label>
+              <input type="number" id="w-review" value="0.8" min="0" max="10" step="0.1">
+            </div>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" onclick="generateReport()">⚡ Generate Report</button>
+          <span class="form-hint" id="form-hint"></span>
+        </div>
+      </div>
+
+      <!-- Streaming results -->
+      <div class="results-area" id="results-area"></div>
+
+      <!-- Admin panel (admin role only) -->
+      <div id="admin-panel" class="hidden">
+        <div class="admin-grid">
+
+          <!-- Export -->
+          <div class="admin-card">
+            <div class="admin-card-header">
+              <div class="admin-card-title">📤 Export Backup</div>
+              <div class="admin-card-subtitle">Download all application data as a JSON file</div>
+            </div>
+            <div class="admin-card-body">
+              <p class="export-info">
+                The export contains all <code>users</code>, <code>accounts</code>, <code>teams</code>,
+                and <code>repositories</code> in a single JSON file.<br><br>
+                Activities are fetched live from GitHub / GitLab and are not included.
+              </p>
+              <button class="btn btn-primary" id="export-btn" onclick="exportBackup()" style="width:100%;justify-content:center">
+                ↓ Download backup.json
+              </button>
+            </div>
+          </div>
+
+          <!-- Import / Restore -->
+          <div class="admin-card">
+            <div class="admin-card-header">
+              <div class="admin-card-title">📥 Restore from File</div>
+              <div class="admin-card-subtitle">Upload a previously exported JSON backup</div>
+            </div>
+            <div class="admin-card-body">
+              <div class="drop-zone" id="drop-zone"
+                   ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
+                <input type="file" accept=".json,application/json" id="backup-file-input" onchange="onFileSelected(event)">
+                <span class="drop-zone-icon">🗂</span>
+                <div class="drop-zone-label">Drop a JSON file here</div>
+                <div class="drop-zone-sub">or click to browse</div>
+              </div>
+              <div class="selected-file" id="selected-file">
+                <span>📄</span>
+                <span class="selected-file-name" id="selected-file-name"></span>
+                <button class="btn btn-secondary btn-sm" onclick="clearFile()">✕</button>
+              </div>
+              <button class="btn btn-primary" id="restore-btn" onclick="openRestore()"
+                      style="width:100%;justify-content:center;margin-top:12px" disabled>
+                ↺ Restore from this file
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

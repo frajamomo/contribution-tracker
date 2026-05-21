@@ -1,0 +1,212 @@
+@startuml design_domain
+
+skinparam packageStyle rectangle
+skinparam classAttributeIconSize 0
+
+title Domain Layer
+
+' ─────────────────────────────────────────────
+'  ENUMS (closed sets — domain-meaningful states)
+' ─────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  TEAM_LEADER
+  TEAM_MEMBER
+}
+
+note right of Role
+  A user may hold **one or more**
+  roles simultaneously.
+  Roles are additive: each role
+  grants additional actions.
+end note
+
+enum IssueState {
+  OPEN
+  CLOSED
+}
+
+enum ReviewState {
+  APPROVED
+  CHANGES_REQUESTED
+  COMMENTED
+}
+
+enum ReportType {
+  ACTIVITY_LOG
+  WEIGHTED_SCORE
+}
+
+enum TimePeriod {
+  LAST_7_DAYS
+  LAST_30_DAYS
+  CURRENT_QUARTER
+  LAST_QUARTER
+  CURRENT_YEAR
+  LAST_YEAR
+  CUSTOM
+}
+
+' ─────────────────────────────────────────────
+'  DOMAIN
+'  Cross-aggregate references use String IDs.
+'
+'  ActivityType and GitPlatform are open value
+'  objects — not enums — so new contribution
+'  kinds and git-server platforms never require
+'  changes to existing domain or application code.
+' ─────────────────────────────────────────────
+package Domain {
+
+  ' ── Open value objects (extensible without code changes) ──
+  '
+  ' New contribution kind (e.g. "CODE_REVIEW_COMMENT"):
+  '   define an ActivityType instance + extend/create a fetcher.
+  '   No existing class needs to change.
+  '
+  ' New platform (e.g. "BITBUCKET"):
+  '   define a GitPlatform instance + create a fetcher + register.
+
+  class ActivityType <<value object>> {
+    +name: String
+    +displayName: String
+  }
+
+  class GitPlatform <<value object>> {
+    +name: String
+  }
+
+  class User {
+    +id: String
+    +username: String
+    +displayName: String
+    +email: String
+    +avatarUrl: String
+    +platformUsernames: Map<GitPlatform, String>
+  }
+
+  note bottom of User
+    platformUsernames maps each git platform
+    to the user's identity on that platform.
+    Adding a new platform requires no change
+    to this class (Open/Closed Principle).
+  end note
+
+  class UserAccount {
+    +id: String
+    +username: String
+    +passwordHash: String
+    +roles: Set<Role>
+    +userId: String
+  }
+
+  class Team {
+    +id: String
+    +name: String
+    +memberIds: List<String>
+    +repositoryIds: List<String>
+  }
+
+  note bottom of Team
+    No dedicated manager field.
+    Team leaders are members
+    who hold the TEAM_LEADER role.
+    Repo list is managed by any
+    team leader in the team.
+  end note
+
+  class Repository {
+    +id: String
+    +name: String
+    +fullName: String
+    +url: String
+    +platform: GitPlatform
+  }
+
+  ' Cross-cutting fields shared by every contribution type,
+  ' composed in rather than inherited (Composition over Inheritance).
+  class ActivityData {
+    +title: String
+    +url: String
+    +createdAt: DateTime
+  }
+
+  interface Activity {
+    +getData(): ActivityData
+    +getType(): ActivityType
+    +getSummary(): String
+  }
+
+  class Commit implements Activity {
+    -data: ActivityData
+    +sha: String
+    +message: String
+    +getData(): ActivityData
+    +getType(): ActivityType
+    +getSummary(): String
+  }
+
+  class MergedPullRequest implements Activity {
+    -data: ActivityData
+    +title: String
+    +mergedAt: DateTime
+    +getData(): ActivityData
+    +getType(): ActivityType
+    +getSummary(): String
+  }
+
+  class Issue implements Activity {
+    -data: ActivityData
+    +title: String
+    +state: IssueState
+    +labels: List<String>
+    +getData(): ActivityData
+    +getType(): ActivityType
+    +getSummary(): String
+  }
+
+  class PullRequestReview implements Activity {
+    -data: ActivityData
+    +pullRequestTitle: String
+    +state: ReviewState
+    +submittedAt: DateTime
+    +getData(): ActivityData
+    +getType(): ActivityType
+    +getSummary(): String
+  }
+
+  class BackupMetadata {
+    +appVersion: String
+    +exportedAt: DateTime
+    +exportedBy: String
+  }
+
+  class BackupFile {
+    +metadata: BackupMetadata
+    +users: List<User>
+    +accounts: List<UserAccount>
+    +teams: List<Team>
+    +repositories: List<Repository>
+    +config: Map<String, String>
+  }
+
+  note bottom of BackupFile
+    Contains only operational data.
+    Contribution data is never stored —
+    it is fetched live from configured
+    git servers at report time.
+  end note
+
+  UserAccount        "1" --> "*" Role                : roles >
+  Repository         --> GitPlatform
+  User               --> GitPlatform                 : platformUsernames key >
+  Activity           --> ActivityType                : type >
+  Commit             *-- ActivityData                : data >
+  MergedPullRequest  *-- ActivityData                : data >
+  Issue              *-- ActivityData                : data >
+  PullRequestReview  *-- ActivityData                : data >
+  BackupFile         --> BackupMetadata
+}
+
+@enduml

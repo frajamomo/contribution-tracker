@@ -1,0 +1,301 @@
+@startuml design_application
+
+skinparam packageStyle rectangle
+skinparam classAttributeIconSize 0
+
+title Application Layer (Use Cases / Ports)
+
+' ─────────────────────────────────────────────
+'  Referenced Domain types (defined in design_domain)
+' ─────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  TEAM_LEADER
+  TEAM_MEMBER
+}
+
+enum ReportEventType {
+  USER_REPORT
+  COMPLETE
+  ERROR
+}
+
+enum ReportType {
+  ACTIVITY_LOG
+  WEIGHTED_SCORE
+}
+
+package Domain <<Rectangle>> #f0f0f0 {
+  class ActivityType <<value object>>
+  class GitPlatform <<value object>>
+  class User
+  class UserAccount
+  class Team
+  class Repository
+  interface Activity
+  class BackupFile
+}
+
+' ─────────────────────────────────────────────
+'  APPLICATION
+'  Hexagonal architecture: this layer defines
+'  ports (interfaces) that infrastructure adapts.
+'
+'  Design patterns used:
+'    Strategy             — ActivityFetcher per platform
+'    Registry             — ActivityFetcherRegistry
+'    Factory Method       — FetcherFactory
+'    Repository           — Persistence ports
+'    Observer             — SSE streaming events
+'    RBAC                 — AuthContext role checks
+'    Interface Segregation — RepoDiscoverer split from ActivityFetcher
+'    Dependency Inversion — Services defined as port interfaces
+' ─────────────────────────────────────────────
+package Application {
+
+  ' ── Query / Report ──────────────────────────
+
+  class ReportQuery {
+    +teamId: String
+    +callerId: String
+    +callerRoles: Set<Role>
+    +since: DateTime
+    +until: DateTime
+    +types: List<ActivityType>
+    +reportType: ReportType
+  }
+
+  class ActivityCount {
+    +type: ActivityType
+    +count: int
+  }
+
+  class UserReport {
+    +user: User
+    +counts: List<ActivityCount>
+    +activities: List<Activity>
+  }
+
+  ReportQuery --> ReportType
+  UserReport "1" *-- "*" Domain.Activity
+  UserReport "1" *-- "*" ActivityCount
+
+  ' ── Sources (Strategy + Registry + Factory) ────────
+  '
+  ' **Strategy Pattern**
+  '   ActivityFetcher is the strategy interface for fetching contributions.
+  '   RepoDiscoverer is a separate interface for discovering user repos.
+  '   A platform may implement one or both (Interface Segregation).
+  '
+  ' **Registry Pattern**
+  '   ActivityFetcherRegistry discovers and selects strategies.
+  '
+  ' **Factory Method Pattern**
+  '   FetcherFactory creates a configured fetcher given an API key.
+  '   Registered per platform; called at report time.
+  '
+  ' Adding a new platform:
+  '   1. Implement ActivityFetcher (and optionally RepoDiscoverer)
+  '   2. Register a FetcherFactory → registry.register(platform, factory)
+  '   Zero existing code changes.
+  '
+  ' Adding a new contribution kind:
+  '   ActivityType is an open value object.
+  '   Extend an existing fetcher or create a new one.
+
+  interface RepoDiscoverer <<Strategy>> {
+    +discoverUserRepos(ctx: Context, username: String): List<Repository>
+  }
+
+  interface ActivityFetcher <<Strategy>> {
+    +getSupportedPlatforms(): List<GitPlatform>
+    +getSupportedTypes(): List<ActivityType>
+    +fetchForUser(ctx: Context, username: String, repo: Repository,\n  since: DateTime, until: DateTime, types: List<ActivityType>): List<Activity>
+    +searchActivities(ctx: Context, username: String, repos: List<Repository>,\n  since: DateTime, until: DateTime, types: List<ActivityType>): List<Activity>
+  }
+
+  note right of RepoDiscoverer
+    **Interface Segregation (ISP):**
+    Repo discovery is separate from
+    activity fetching. A platform may
+    support fetching without discovery
+    (e.g. manually configured repos only).
+  end note
+
+  interface FetcherFactory <<Factory Method>> {
+    +build(apiKey: String): ActivityFetcher
+  }
+
+  class ActivityFetcherRegistry <<Registry>> {
+    -factories: Map<GitPlatform, FetcherFactory>
+    +register(platform: GitPlatform, factory: FetcherFactory): void
+    +build(platform: GitPlatform, apiKey: String): ActivityFetcher
+    +platforms(): List<GitPlatform>
+  }
+
+  ActivityFetcherRegistry "1" o-- "*" FetcherFactory : registered >
+  FetcherFactory ..> ActivityFetcher                  : creates >
+
+  ' ── Auth (RBAC) ─────────────────────────────
+
+  class AuthToken {
+    +value: String
+    +expiresAt: DateTime
+    +accountId: String
+    +roles: Set<Role>
+  }
+
+  class AuthContext {
+    +accountId: String
+    +userId: String
+    +roles: Set<Role>
+    +teamId: String
+    +isAdmin(): boolean
+    +isTeamLeader(): boolean
+    +isTeamMember(): boolean
+    +canViewUser(userId: String): boolean
+  }
+
+  note right of AuthContext
+    **RBAC rules:**
+    • ADMIN — backup, restore, configure sources
+    • TEAM_LEADER — view full team report,
+      manage team repos
+    • TEAM_MEMBER — view own report only
+    canViewUser() checks role + team membership
+  end note
+
+  ' ── Service ports (Dependency Inversion) ────
+  '
+  ' Handlers depend on these interfaces, not on
+  ' concrete service classes. This allows testing
+  ' handlers in isolation and keeps the dependency
+  ' arrow pointing inward (DIP).
+
+  interface AuthServicePort <<port>> {
+    +login(username: String, password: String): AuthToken
+    +validate(token: AuthToken): AuthContext
+  }
+
+  interface ReportServicePort <<port>> {
+    +generateReport(ctx: Context, query: ReportQuery,\n  out: Channel<UserReport>): void
+  }
+
+  interface BackupServicePort <<port>> {
+    +export(ctx: Context): BackupFile
+    +restore(ctx: Context, data: BackupFile): void
+  }
+
+  ' ── Persistence ports (Repository Pattern) ──
+
+  interface UserAccountRepository <<port>> {
+    +findByUsername(username: String): UserAccount
+    +findById(id: String): UserAccount
+    +save(account: UserAccount): void
+    +findAll(): List<UserAccount>
+  }
+
+  interface UserRepository <<port>> {
+    +findById(id: String): User
+    +findByIds(ids: List<String>): List<User>
+    +findByAccountId(accountId: String): User
+    +updatePlatformUsername(ctx: Context, userId: String,\n  platform: GitPlatform, username: String): void
+    +findAll(): List<User>
+  }
+
+  interface TeamRepository <<port>> {
+    +findById(id: String): Team
+    +findByMemberId(memberId: String): Team
+    +save(team: Team): void
+    +findAll(): List<Team>
+    +addRepository(teamId: String, repoId: String): void
+  }
+
+  interface RepositoryStore <<port>> {
+    +findById(id: String): Repository
+    +findByIds(ids: List<String>): List<Repository>
+    +save(repo: Repository): void
+    +upsert(repo: Repository): Repository
+    +findAll(): List<Repository>
+  }
+
+  interface ConfigRepository <<port>> {
+    +get(ctx: Context, key: String): String
+    +set(ctx: Context, key: String, value: String): void
+    +findAll(ctx: Context): Map<String, String>
+  }
+
+  interface BackupRepository <<port>> {
+    +export(ctx: Context): BackupFile
+    +restore(ctx: Context, data: BackupFile): void
+  }
+
+  ' ── Concrete application services ───────────
+
+  class AuthService implements AuthServicePort {
+    -accounts: UserAccountRepository
+    +login(username: String, password: String): AuthToken
+    +validate(token: AuthToken): AuthContext
+  }
+
+  class ReportService implements ReportServicePort {
+    -users: UserRepository
+    -teams: TeamRepository
+    -repos: RepositoryStore
+    -config: ConfigRepository
+    -registry: ActivityFetcherRegistry
+    +generateReport(ctx: Context, query: ReportQuery,\n  out: Channel<UserReport>): void
+  }
+
+  note right of ReportService
+    1. Load API key from ConfigRepository
+    2. Resolve team members (scoped by caller role)
+    3. For each member: fetch contributions
+       from configured repos via registry
+    4. Stream UserReport per member via channel
+  end note
+
+  class BackupService implements BackupServicePort {
+    -backupRepo: BackupRepository
+    +export(ctx: Context): BackupFile
+    +restore(ctx: Context, data: BackupFile): void
+  }
+
+  ' ── Streaming events (Observer Pattern) ─────
+
+  interface ReportEvent {
+    +getType(): ReportEventType
+  }
+
+  class UserReportEvent implements ReportEvent {
+    +userReport: UserReport
+  }
+
+  class ReportCompleteEvent implements ReportEvent {
+  }
+
+  class ReportErrorEvent implements ReportEvent {
+    +message: String
+  }
+
+  AuthService --> UserAccountRepository    : reads >
+  AuthService ..> AuthToken                : issues >
+  AuthService ..> AuthContext              : produces >
+  AuthContext --> Role
+
+  ReportService --> ActivityFetcherRegistry
+  ReportService --> UserRepository
+  ReportService --> TeamRepository
+  ReportService --> RepositoryStore
+  ReportService --> ConfigRepository
+  ReportService ..> ReportEvent            : streams >
+
+  BackupService --> BackupRepository
+  BackupService ..> Domain.BackupFile      : produces/consumes >
+
+  ReportEvent --> ReportEventType
+  UserReportEvent --> UserReport
+}
+
+@enduml

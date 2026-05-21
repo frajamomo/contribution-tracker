@@ -1,0 +1,99 @@
+@startuml design_infrastructure
+
+skinparam packageStyle rectangle
+skinparam classAttributeIconSize 0
+
+title Infrastructure Layer (Adapters)
+
+' ─────────────────────────────────────────────
+'  Referenced Application ports (defined in design_application)
+' ─────────────────────────────────────────────
+
+package Application <<Rectangle>> #f0f0f0 {
+  interface RepoDiscoverer <<Strategy>>
+  interface ActivityFetcher <<Strategy>>
+  interface UserAccountRepository <<port>>
+  interface UserRepository <<port>>
+  interface TeamRepository <<port>>
+  interface RepositoryStore <<port>>
+  interface ConfigRepository <<port>>
+  interface BackupRepository <<port>>
+}
+
+' ─────────────────────────────────────────────
+'  INFRASTRUCTURE
+'  Implements application ports.
+'
+'  Design patterns used:
+'    Strategy   — Each fetcher is a platform-specific strategy
+'    Adapter    — Translates external APIs to domain interfaces
+'    Repository — Persistence adapters implement port interfaces
+' ─────────────────────────────────────────────
+package Infrastructure {
+
+  ' ── Git-server clients ──────────────────────
+
+  class GitHubApiClient {
+    -baseUrl: String
+    -apiKey: String
+    -httpClient: HttpClient
+    +get(ctx: Context, url: String): Bytes
+    +getAll(ctx: Context, url: String): List<Bytes>
+  }
+
+  note right of GitHubApiClient
+    getAll() follows Link: rel="next"
+    headers for automatic pagination.
+  end note
+
+  class GitLabApiClient {
+    -baseUrl: String
+    -apiKey: String
+    +get(ctx: Context, url: String): Bytes
+    +getAll(ctx: Context, url: String): List<Bytes>
+  }
+
+  ' ── Fetcher implementations (Strategy Pattern) ──
+  '
+  ' Each fetcher implements both ActivityFetcher and
+  ' RepoDiscoverer (ISP: a platform that does not
+  ' support discovery would only implement ActivityFetcher).
+
+  class GitHubActivityFetcher implements Application.ActivityFetcher, Application.RepoDiscoverer {
+    -client: GitHubApiClient
+    +getSupportedTypes(): List<ActivityType>
+    +getSupportedPlatforms(): List<GitPlatform>
+    +discoverUserRepos(ctx: Context, username: String): List<Repository>
+    +fetchForUser(ctx: Context, username: String, repo: Repository,\n  since: DateTime, until: DateTime, types: List<ActivityType>): List<Activity>
+    +searchActivities(ctx: Context, username: String, repos: List<Repository>,\n  since: DateTime, until: DateTime, types: List<ActivityType>): List<Activity>
+  }
+
+  class GitLabActivityFetcher implements Application.ActivityFetcher, Application.RepoDiscoverer {
+    -client: GitLabApiClient
+    +getSupportedTypes(): List<ActivityType>
+    +getSupportedPlatforms(): List<GitPlatform>
+    +discoverUserRepos(ctx: Context, username: String): List<Repository>
+    +fetchForUser(ctx: Context, username: String, repo: Repository,\n  since: DateTime, until: DateTime, types: List<ActivityType>): List<Activity>
+    +searchActivities(ctx: Context, username: String, repos: List<Repository>,\n  since: DateTime, until: DateTime, types: List<ActivityType>): List<Activity>
+  }
+
+  GitHubActivityFetcher --> GitHubApiClient
+  GitLabActivityFetcher --> GitLabApiClient
+
+  ' ── Persistence adapters (Repository Pattern) ──
+
+  class PgxUserAccountRepo implements Application.UserAccountRepository
+  class PgxUserRepo implements Application.UserRepository
+  class PgxTeamRepo implements Application.TeamRepository
+  class PgxRepositoryStore implements Application.RepositoryStore
+  class PgxConfigRepo implements Application.ConfigRepository
+  class PgxBackupRepo implements Application.BackupRepository
+
+  note bottom of PgxUserAccountRepo
+    All persistence adapters use
+    pgx/v5 connection pool for
+    PostgreSQL access.
+  end note
+}
+
+@enduml

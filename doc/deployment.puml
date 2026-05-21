@@ -1,0 +1,93 @@
+@startuml deployment
+
+skinparam defaultTextAlignment center
+skinparam rectangleBorderRadius 6
+skinparam rectangleBorderColor #d0d7de
+skinparam arrowColor #57606a
+skinparam arrowThickness 1.5
+skinparam cloudBorderColor #0969da
+skinparam cloudBackgroundColor #dbeafe
+skinparam actorBorderColor #57606a
+skinparam noteBorderColor #d0d7de
+skinparam noteBackgroundColor #f6f8fa
+
+actor "Browser" as browser
+
+' ─────────────────────────────────────────────
+'  PODMAN CONTAINERS
+'  Each component runs in its own container
+'  for modularity and future horizontal scaling.
+'  Orchestrated via podman-compose.
+' ─────────────────────────────────────────────
+
+rectangle "Container: frontend\nnginx · :80 → exposed :3000" as frontend #e8f4fd {
+  component "Static SPA\nHTML · CSS · JS" as assets
+  component "Reverse Proxy\nnginx /api → api:8080" as proxy
+}
+
+rectangle "Container: api\nGo · Chi router · :8080" as api #fff8e1 {
+  component "Presentation (Controller)\nAuthHandler · ReportHandler (SSE)\nBackupHandler · ConfigHandler\nProfileHandler · TeamHandler\nAuthMiddleware (JWT + RBAC)" as presentation
+  component "Application (Model)\nAuthService · ReportService · BackupService\nActivityFetcherRegistry" as application
+  component "Infrastructure (Adapters)\nPgxRepositories · GitHubFetcher · GitLabFetcher" as infra_comp
+
+  presentation -down-> application
+  application -down-> infra_comp
+}
+
+rectangle "Container: db\nPostgreSQL 16 · :5432" as db #f0fdf4 {
+  component "Operational Data\nusers · user_accounts\nteams · team_members\nrepositories · team_repositories\napp_config" as schema
+}
+
+cloud "GitHub API\napi.github.com" as github
+cloud "Red Hat GitLab API\ngitlab.cee.redhat.com" as gitlab
+
+' ─────────────────────────────────────────────
+'  CONNECTIONS
+' ─────────────────────────────────────────────
+
+browser      -right->  frontend   : HTTPS
+frontend     -right->  api        : /api (reverse proxy)
+api          -down->   db         : pgx (TCP)
+infra_comp   -right->  github     : REST · Bearer token
+infra_comp   -right->  gitlab     : REST · Bearer token
+
+' ─────────────────────────────────────────────
+'  NOTES
+' ─────────────────────────────────────────────
+
+note bottom of frontend
+  Serves static SPA build.
+  nginx proxies /api to the API container.
+  Supports dynamic client-side filtering
+  of report results.
+end note
+
+note bottom of api
+  **MVC pattern:**
+  Presentation = HTTP handlers (Controller)
+  Application  = domain logic (Model)
+  Frontend SPA = browser rendering (View)
+
+  Stateless — scales horizontally by
+  running additional container replicas.
+  Fetches contribution data on demand;
+  no contribution data stored.
+end note
+
+note bottom of db
+  Persists operational data only:
+  users, accounts, teams, repos, config.
+  Contributions are never stored —
+  fetched live from git servers.
+  Backup/restore covers this data.
+end note
+
+note right of github
+  Contributions fetched via
+  Strategy + Registry pattern.
+  New git-server platforms added
+  by implementing ActivityFetcher
+  and registering a factory.
+end note
+
+@enduml

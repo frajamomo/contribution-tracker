@@ -1,0 +1,116 @@
+@startuml design
+
+skinparam packageStyle rectangle
+skinparam classAttributeIconSize 0
+
+title Layer Dependencies — Ports & Adapters
+
+' ═════════════════════════════════════════════
+'  Shows only the interfaces (ports) that connect
+'  the three layers. Internal details of each layer
+'  are in the dedicated diagrams:
+'    design_domain.puml
+'    design_application.puml
+'    design_infrastructure.puml
+'    design_presentation.puml
+' ═════════════════════════════════════════════
+
+' ─────────────────────────────────────────────
+'  DOMAIN
+' ─────────────────────────────────────────────
+package Domain #f0fdf4 {
+  interface Activity
+  class User
+  class UserAccount
+  class Team
+  class Repository
+  class BackupFile
+  class ActivityType <<value object>>
+  class GitPlatform <<value object>>
+}
+
+' ─────────────────────────────────────────────
+'  APPLICATION (defines ports)
+' ─────────────────────────────────────────────
+package Application #fff8e1 {
+
+  ' ── Service ports (consumed by Presentation) ──
+  interface AuthServicePort <<port>>
+  interface ReportServicePort <<port>>
+  interface BackupServicePort <<port>>
+
+  ' ── Persistence ports (implemented by Infrastructure) ──
+  interface UserAccountRepository <<port>>
+  interface UserRepository <<port>>
+  interface TeamRepository <<port>>
+  interface RepositoryStore <<port>>
+  interface ConfigRepository <<port>>
+  interface BackupRepository <<port>>
+
+  ' ── Fetcher ports (implemented by Infrastructure) ──
+  interface ActivityFetcher <<Strategy>>
+  interface RepoDiscoverer <<Strategy>>
+  interface FetcherFactory <<Factory Method>>
+}
+
+' ─────────────────────────────────────────────
+'  INFRASTRUCTURE (implements ports)
+' ─────────────────────────────────────────────
+package Infrastructure #e8f4fd {
+  class GitHubActivityFetcher
+  class GitLabActivityFetcher
+  class PgxUserAccountRepo
+  class PgxUserRepo
+  class PgxTeamRepo
+  class PgxRepositoryStore
+  class PgxConfigRepo
+  class PgxBackupRepo
+}
+
+' ─────────────────────────────────────────────
+'  PRESENTATION (consumes ports)
+' ─────────────────────────────────────────────
+package Presentation #fce4ec {
+  class AuthHandler
+  class ReportHandler
+  class BackupHandler
+  class ConfigHandler
+  class ProfileHandler
+  class TeamHandler
+}
+
+' ─────────────────────────────────────────────
+'  CONNECTORS
+' ─────────────────────────────────────────────
+
+' Presentation → Application (depends on service ports)
+AuthHandler     --> AuthServicePort
+ReportHandler   --> ReportServicePort
+ReportHandler   --> UserRepository
+BackupHandler   --> BackupServicePort
+ConfigHandler   --> ConfigRepository
+ProfileHandler  --> UserRepository
+TeamHandler     --> TeamRepository
+
+' Infrastructure → Application (implements ports)
+GitHubActivityFetcher ..|> ActivityFetcher
+GitHubActivityFetcher ..|> RepoDiscoverer
+GitLabActivityFetcher ..|> ActivityFetcher
+GitLabActivityFetcher ..|> RepoDiscoverer
+PgxUserAccountRepo    ..|> UserAccountRepository
+PgxUserRepo           ..|> UserRepository
+PgxTeamRepo           ..|> TeamRepository
+PgxRepositoryStore    ..|> RepositoryStore
+PgxConfigRepo         ..|> ConfigRepository
+PgxBackupRepo         ..|> BackupRepository
+
+' Application → Domain (uses domain types)
+AuthServicePort      ..> UserAccount   : authenticates >
+ReportServicePort    ..> User          : resolves >
+ReportServicePort    ..> Activity      : streams >
+BackupServicePort    ..> BackupFile    : exports/imports >
+ActivityFetcher      ..> Repository    : reads >
+ActivityFetcher      ..> Activity      : produces >
+RepoDiscoverer       ..> Repository    : discovers >
+
+@enduml

@@ -439,10 +439,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; c
 
     <!-- Sidebar: repositories -->
     <aside class="sidebar">
-      <div class="sidebar-title">My Repositories</div>
+      <div class="sidebar-title">Team Repositories</div>
+      <div id="repo-managed-note" class="hidden" style="font-size:11px;color:var(--text-muted);margin-bottom:6px">Managed by your manager</div>
       <div id="repo-list"></div>
 
-      <button class="btn btn-secondary btn-sm btn-block" style="margin-top:6px" onclick="toggleAddRepo()">
+      <button id="add-repo-btn" class="btn btn-secondary btn-sm btn-block" style="margin-top:6px" onclick="toggleAddRepo()">
         + Add repository
       </button>
 
@@ -605,17 +606,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; c
 // ══════════════════════════════════════════════════════
 
 const ACCOUNTS = {
-  alice: { password: 'secret', role: 'USER',    displayName: 'Alice Chen',   color: '#0969da', team: null },
-  carol: { password: 'secret', role: 'MANAGER', displayName: 'Carol Rivera', color: '#8250df', team: ['alice', 'bob', 'dave'] },
-  admin: { password: 'secret', role: 'ADMIN',   displayName: 'App Admin',    color: '#cf222e', team: null },
+  alice: { password: 'secret', role: 'USER',    displayName: 'Alice Chen',   color: '#0969da', teamId: 't1' },
+  carol: { password: 'secret', role: 'MANAGER', displayName: 'Carol Rivera', color: '#8250df', teamId: 't1' },
+  admin: { password: 'secret', role: 'ADMIN',   displayName: 'App Admin',    color: '#cf222e', teamId: null },
 };
 
-const INITIAL_REPOS = {
-  alice: [
-    { name: 'org/frontend-app',  platform: 'github' },
-    { name: 'org/api-service',   platform: 'github' },
-  ],
-  carol: [
+const TEAMS = {
+  t1: { name: 'Engineering', managerId: 'carol', members: ['alice', 'bob', 'dave'] },
+};
+
+const teamRepos = {
+  t1: [
     { name: 'org/frontend-app',  platform: 'github' },
     { name: 'org/api-service',   platform: 'github' },
     { name: 'org/data-pipeline', platform: 'gitlab' },
@@ -656,7 +657,6 @@ const ACTIVITIES = {
 // ══════════════════════════════════════════════════════
 
 let session = null;
-const userRepos = {};
 let reportType = 'activity'; // 'activity' | 'weighted'
 
 // ══════════════════════════════════════════════════════
@@ -675,9 +675,6 @@ function doLogin() {
   }
   errEl.style.display = 'none';
   session = { username, ...account };
-  if (!userRepos[username]) {
-    userRepos[username] = [...(INITIAL_REPOS[username] || [])];
-  }
   mountApp();
 }
 
@@ -733,10 +730,13 @@ function mountApp() {
     document.getElementById('page-subtitle').textContent = 'View contribution activity across your entire team.';
     document.getElementById('field-member').classList.remove('hidden');
     document.getElementById('report-type-row').classList.remove('hidden');
+    document.getElementById('add-repo-btn').classList.remove('hidden');
+    document.getElementById('repo-managed-note').classList.add('hidden');
     setReportType('activity');
+    const team = TEAMS[session.teamId] || {};
     const sel = document.getElementById('filter-member');
     sel.innerHTML = '<option value="">All members</option>';
-    session.team.forEach(u => {
+    (team.members || []).forEach(u => {
       const opt = document.createElement('option');
       opt.value = u;
       opt.textContent = TEAM_INFO[u].displayName;
@@ -745,10 +745,12 @@ function mountApp() {
     document.getElementById('form-hint').textContent = 'Results stream in per member as data is fetched from each source.';
   } else {
     document.getElementById('page-title').textContent = 'My Activity';
-    document.getElementById('page-subtitle').textContent = 'View your own contribution activity across your tracked repositories.';
+    document.getElementById('page-subtitle').textContent = 'View your own contribution activity across your team\'s repositories.';
     document.getElementById('field-member').classList.add('hidden');
     document.getElementById('report-type-row').classList.add('hidden');
-    document.getElementById('form-hint').textContent = 'Your tracked repositories will be used automatically.';
+    document.getElementById('add-repo-btn').classList.add('hidden');
+    document.getElementById('repo-managed-note').classList.remove('hidden');
+    document.getElementById('form-hint').textContent = 'Repositories are configured by your manager.';
   }
 
   document.getElementById('filter-period').value = 'last30';
@@ -762,10 +764,11 @@ function mountApp() {
 // ══════════════════════════════════════════════════════
 
 function renderRepos() {
-  const repos = userRepos[session.username] || [];
+  const repos = (session.teamId && teamRepos[session.teamId]) || [];
+  const canEdit = session.role === 'MANAGER';
   const list = document.getElementById('repo-list');
   if (repos.length === 0) {
-    list.innerHTML = '<div class="no-repos">No repositories added yet.</div>';
+    list.innerHTML = '<div class="no-repos">No repositories configured.</div>';
     return;
   }
   list.innerHTML = repos.map((r, i) => `
@@ -775,7 +778,7 @@ function renderRepos() {
         <div class="repo-name" title="${r.name}">${r.name}</div>
         <div class="repo-platform">${r.platform === 'github' ? 'GitHub' : 'GitLab'}</div>
       </div>
-      <button class="repo-remove" onclick="removeRepo(${i})" title="Remove">✕</button>
+      ${canEdit ? `<button class="repo-remove" onclick="removeRepo(${i})" title="Remove">✕</button>` : ''}
     </div>
   `).join('');
 }
@@ -790,15 +793,16 @@ function toggleAddRepo() {
 function addRepo() {
   const name = document.getElementById('new-repo-name').value.trim();
   const platform = document.getElementById('new-repo-platform').value;
-  if (!name) return;
-  userRepos[session.username].push({ name, platform });
+  if (!name || !session.teamId) return;
+  if (!teamRepos[session.teamId]) teamRepos[session.teamId] = [];
+  teamRepos[session.teamId].push({ name, platform });
   document.getElementById('new-repo-name').value = '';
   document.getElementById('add-repo-form').style.display = 'none';
   renderRepos();
 }
 
 function removeRepo(i) {
-  userRepos[session.username].splice(i, 1);
+  if (session.teamId) teamRepos[session.teamId].splice(i, 1);
   renderRepos();
 }
 
@@ -897,7 +901,7 @@ function generateReport() {
   let targets;
   if (session.role === 'MANAGER') {
     const pick = document.getElementById('filter-member').value;
-    targets = pick ? [pick] : session.team;
+    targets = pick ? [pick] : (TEAMS[session.teamId]?.members || []);
   } else {
     targets = [session.username];
   }
