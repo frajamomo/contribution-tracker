@@ -44,6 +44,43 @@ func TestGetProfile_Success(t *testing.T) {
 	}
 }
 
+func TestGetProfile_IncludesPlatformUsernames(t *testing.T) {
+	repo := &mockUserRepo{
+		findByIDFn: func(ctx context.Context, id string) (*domain.User, error) {
+			return &domain.User{
+				ID:       "u-1",
+				Username: "alice",
+				PlatformUsernames: map[domain.GitPlatform]string{
+					domain.PlatformGitHub: "alice-gh",
+					domain.PlatformGitLab: "alice-gl",
+				},
+			}, nil
+		},
+	}
+
+	handler := NewProfileHandler(repo)
+	req := newAuthenticatedRequest(http.MethodGet, "/api/profile", nil, &application.AuthContext{
+		UserID: "u-1",
+		Roles:  map[domain.Role]bool{domain.RoleTeamMember: true},
+	})
+	rr := httptest.NewRecorder()
+
+	handler.GetProfile(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	var user UserDTO
+	json.NewDecoder(rr.Body).Decode(&user)
+	if user.PlatformUsernames["GITHUB"] != "alice-gh" {
+		t.Errorf("expected GITHUB=alice-gh, got %s", user.PlatformUsernames["GITHUB"])
+	}
+	if user.PlatformUsernames["GITLAB"] != "alice-gl" {
+		t.Errorf("expected GITLAB=alice-gl, got %s", user.PlatformUsernames["GITLAB"])
+	}
+}
+
 func TestGetProfile_NotAuthenticated(t *testing.T) {
 	handler := NewProfileHandler(&mockUserRepo{})
 	req := httptest.NewRequest(http.MethodGet, "/api/profile", nil)

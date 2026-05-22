@@ -59,6 +59,7 @@
         <div style="font-size:14px;font-weight:600" id="nav-name"></div>
         <span class="role-badge" id="nav-role-badge"></span>
       </div>
+      <button class="btn btn-secondary btn-sm" onclick="showProfile()">Profile</button>
       <button class="btn btn-secondary btn-sm" onclick="doLogout()">Sign out</button>
     </div>
   </nav>
@@ -81,6 +82,10 @@
           <option value="github">GitHub</option>
           <option value="gitlab">GitLab</option>
         </select>
+        <div class="token-field-wrapper">
+          <input type="password" id="new-repo-token" placeholder="API token (PAT)" autocomplete="off">
+          <span class="token-required-hint" id="token-required-hint">Token required</span>
+        </div>
         <div class="add-repo-actions">
           <button class="btn btn-primary btn-sm" onclick="addRepo()">Add</button>
           <button class="btn btn-secondary btn-sm" onclick="toggleAddRepo()">Cancel</button>
@@ -142,6 +147,7 @@
           <div class="activity-types-label">Activity types</div>
           <div class="checkbox-group">
             <label class="checkbox-label"><input type="checkbox" id="chk-commit" checked> Commits</label>
+            <label class="checkbox-label"><input type="checkbox" id="chk-merged" checked> Merged PRs</label>
             <label class="checkbox-label"><input type="checkbox" id="chk-issue"  checked> Issues</label>
             <label class="checkbox-label"><input type="checkbox" id="chk-review" checked> PR Reviews</label>
           </div>
@@ -154,6 +160,10 @@
             <div class="weight-field">
               <label>Commit weight</label>
               <input type="number" id="w-commit" value="1.0" min="0" max="10" step="0.1">
+            </div>
+            <div class="weight-field">
+              <label>Merged PR weight</label>
+              <input type="number" id="w-merged" value="1.5" min="0" max="10" step="0.1">
             </div>
             <div class="weight-field">
               <label>Issue weight</label>
@@ -225,6 +235,21 @@
         </div>
       </div>
     </main>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     PROFILE
+══════════════════════════════════════════════ -->
+<div id="screen-profile">
+  <div class="profile-card">
+    <div class="profile-header">
+      <button class="btn btn-secondary btn-sm" onclick="backToApp()">&larr; Back</button>
+      <h2>Git Server Usernames</h2>
+      <p>Set your username for each git platform used by your team's repositories.</p>
+    </div>
+    <div id="profile-platforms"></div>
+    <div class="profile-status" id="profile-status"></div>
   </div>
 </div>
 

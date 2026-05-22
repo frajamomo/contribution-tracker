@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"time"
 
@@ -48,6 +49,12 @@ func (r *PgxBackupRepo) Export(ctx context.Context) (*domain.BackupFile, error) 
 	config, err := configRepo.FindAll(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("export config: %w", err)
+	}
+
+	for i := range repos {
+		if repos[i].APIToken != "" {
+			repos[i].APIToken = base64.StdEncoding.EncodeToString([]byte(repos[i].APIToken))
+		}
 	}
 
 	return &domain.BackupFile{
@@ -129,9 +136,15 @@ func (r *PgxBackupRepo) Restore(ctx context.Context, data *domain.BackupFile) er
 	}
 
 	for _, repo := range data.Repositories {
+		token := repo.APIToken
+		if token != "" {
+			if decoded, err := base64.StdEncoding.DecodeString(token); err == nil {
+				token = string(decoded)
+			}
+		}
 		_, err := tx.Exec(ctx,
-			"INSERT INTO repositories (id, name, full_name, url, platform) VALUES ($1,$2,$3,$4,$5)",
-			repo.ID, repo.Name, repo.FullName, repo.URL, repo.Platform.Name)
+			"INSERT INTO repositories (id, name, full_name, url, platform, api_token) VALUES ($1,$2,$3,$4,$5,$6)",
+			repo.ID, repo.Name, repo.FullName, repo.URL, repo.Platform.Name, token)
 		if err != nil {
 			return fmt.Errorf("restore repo %s: %w", repo.ID, err)
 		}

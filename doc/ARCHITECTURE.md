@@ -132,7 +132,7 @@ Combine three design patterns:
 
 - **Open/Closed Principle**: Adding Bitbucket requires one new `ActivityFetcher`, one `FetcherFactory`, and a `registry.register()` call. Zero existing code changes.
 - **Template Method was considered** but rejected because platforms differ significantly in API structure (pagination, authentication, search). Strategy allows each implementation full control.
-- **Factory per-request**: API keys are loaded from the database at report time, not at startup. The factory pattern defers instantiation until the key is known.
+- **Factory per-request**: API tokens are stored per repository and loaded at report time. The factory pattern defers instantiation until the token is known, and repos are grouped by (platform, token) to reuse fetcher instances.
 
 ### Consequences
 
@@ -355,8 +355,7 @@ Backup/restore covers **operational data only**:
 | Users and platform username mappings | Contribution data (commits, PRs, issues) |
 | User accounts (credentials, roles) | Report history |
 | Teams (members, repository assignments) | Cached or derived data |
-| Repositories (name, URL, platform) | |
-| Application configuration (API keys) | |
+| Repositories (name, URL, platform, API token) | |
 
 Backup is exported as a single JSON file. Restore overwrites all operational data.
 
@@ -364,12 +363,12 @@ Backup is exported as a single JSON file. Restore overwrites all operational dat
 
 - Contribution data is not stored (ADR-9), so there is nothing to back up.
 - JSON format is human-readable and can be version-controlled or audited.
-- Admin-only access ensures that backup files (which contain API keys and password hashes) are not exposed to non-privileged users.
+- Admin-only access ensures that backup files (which contain API tokens and password hashes) are not exposed to non-privileged users.
 
 ### Consequences
 
 - Restoring a backup resets all users, teams, and configuration to the backup state.
-- API keys in the backup are stored in plaintext (acceptable since backup is admin-only and the file is not persisted on the server).
+- API tokens in the backup are stored in plaintext (acceptable since backup is admin-only and the file is not persisted on the server).
 
 ---
 
@@ -398,7 +397,7 @@ Both API clients accept a configurable base URL, enabling the same fetcher code 
 
 ### Consequences
 
-- Two API keys must be configured by the administrator (one per platform).
+- Each repository is configured with its own API token (PAT) when added to a team by a team leader.
 - Each user maps their platform-specific username via the profile endpoint.
 
 ---

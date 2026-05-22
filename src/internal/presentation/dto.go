@@ -18,6 +18,7 @@ type LoginResponse struct {
 
 type ReportRequestDTO struct {
 	TeamID     string   `json:"teamId"`
+	MemberID   string   `json:"memberId"`
 	Since      string   `json:"since"`
 	Until      string   `json:"until"`
 	Types      []string `json:"types"`
@@ -31,10 +32,11 @@ type UserReportDTO struct {
 }
 
 type UserDTO struct {
-	ID          string `json:"id"`
-	Username    string `json:"username"`
-	DisplayName string `json:"displayName"`
-	AvatarURL   string `json:"avatarUrl"`
+	ID                string            `json:"id"`
+	Username          string            `json:"username"`
+	DisplayName       string            `json:"displayName"`
+	AvatarURL         string            `json:"avatarUrl"`
+	PlatformUsernames map[string]string `json:"platformUsernames,omitempty"`
 }
 
 type ActivityDTO struct {
@@ -57,8 +59,31 @@ type PlatformUsernameRequest struct {
 	Username string `json:"username"`
 }
 
+type MemberDTO struct {
+	ID          string `json:"id"`
+	Username    string `json:"username"`
+	DisplayName string `json:"displayName"`
+}
+
+type TeamDTO struct {
+	ID            string       `json:"ID"`
+	Name          string       `json:"Name"`
+	MemberIDs     []string     `json:"MemberIDs"`
+	Members       []MemberDTO  `json:"Members"`
+	RepositoryIDs []string     `json:"RepositoryIDs"`
+	Repositories  []RepoDTO    `json:"Repositories"`
+}
+
+type RepoDTO struct {
+	ID       string `json:"id"`
+	FullName string `json:"fullName"`
+	Platform string `json:"platform"`
+}
+
 type AddRepoRequest struct {
-	RepoID string `json:"repoId"`
+	FullName string `json:"fullName"`
+	Platform string `json:"platform"`
+	APIToken string `json:"apiToken"`
 }
 
 type ConfigSetRequest struct {
@@ -73,11 +98,19 @@ type SSEEventData struct {
 }
 
 func UserToDTO(u domain.User) UserDTO {
+	var pu map[string]string
+	if len(u.PlatformUsernames) > 0 {
+		pu = make(map[string]string, len(u.PlatformUsernames))
+		for p, name := range u.PlatformUsernames {
+			pu[p.Name] = name
+		}
+	}
 	return UserDTO{
-		ID:          u.ID,
-		Username:    u.Username,
-		DisplayName: u.DisplayName,
-		AvatarURL:   u.AvatarURL,
+		ID:                u.ID,
+		Username:          u.Username,
+		DisplayName:       u.DisplayName,
+		AvatarURL:         u.AvatarURL,
+		PlatformUsernames: pu,
 	}
 }
 

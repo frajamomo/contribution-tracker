@@ -57,6 +57,7 @@ func (h *ReportHandler) StreamReport(w http.ResponseWriter, r *http.Request) {
 
 	query := application.ReportQuery{
 		TeamID:      req.TeamID,
+		MemberID:    req.MemberID,
 		CallerID:    authCtx.UserID,
 		CallerRoles: authCtx.Roles,
 		Since:       since,

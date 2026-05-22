@@ -6,4 +6,5 @@ type Repository struct {
 	FullName string
 	URL      string
 	Platform GitPlatform
+	APIToken string
 }

@@ -82,26 +82,30 @@ func TestSearchActivities_Issues(t *testing.T) {
 		q := r.URL.Query().Get("q")
 
 		if strings.Contains(q, "type:issue") {
-			result := ghSearchResult[ghIssue]{
-				TotalCount: 2,
-				Items: []ghIssue{
-					{
-						Title:      "Bug in login",
-						State:      "open",
-						HTMLURL:    "https://github.com/octocat/hello-world/issues/1",
-						CreatedAt:  time.Date(2024, 1, 10, 0, 0, 0, 0, time.UTC),
-						Repository: &ghSearchRepo{FullName: "octocat/hello-world"},
-						Labels:     []ghLabel{{Name: "bug"}},
-					},
-					{
-						Title:      "Issue in other repo",
-						State:      "open",
-						HTMLURL:    "https://github.com/other/repo/issues/5",
-						CreatedAt:  time.Date(2024, 1, 12, 0, 0, 0, 0, time.UTC),
-						Repository: &ghSearchRepo{FullName: "other/repo"},
-					},
+			allIssues := []ghIssue{
+				{
+					Title:      "Bug in login",
+					State:      "open",
+					HTMLURL:    "https://github.com/octocat/hello-world/issues/1",
+					CreatedAt:  time.Date(2024, 1, 10, 0, 0, 0, 0, time.UTC),
+					Repository: &ghSearchRepo{FullName: "octocat/hello-world"},
+					Labels:     []ghLabel{{Name: "bug"}},
+				},
+				{
+					Title:      "Issue in other repo",
+					State:      "open",
+					HTMLURL:    "https://github.com/other/repo/issues/5",
+					CreatedAt:  time.Date(2024, 1, 12, 0, 0, 0, 0, time.UTC),
+					Repository: &ghSearchRepo{FullName: "other/repo"},
 				},
 			}
+			var filtered []ghIssue
+			for _, issue := range allIssues {
+				if strings.Contains(q, "repo:"+issue.Repository.FullName) {
+					filtered = append(filtered, issue)
+				}
+			}
+			result := ghSearchResult[ghIssue]{TotalCount: len(filtered), Items: filtered}
 			json.NewEncoder(w).Encode(result)
 		} else if strings.Contains(q, "type:pr") {
 			result := ghSearchResult[ghIssue]{TotalCount: 0, Items: []ghIssue{}}

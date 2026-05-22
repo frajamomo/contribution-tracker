@@ -77,6 +77,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
   });
+
+  document.getElementById('new-repo-platform').addEventListener('change', updateTokenField);
+
+  const tokenInput = document.getElementById('new-repo-token');
+  tokenInput.addEventListener('focus', () => {
+    if (tokenInput.value === TOKEN_SENTINEL) tokenInput.select();
+  });
+  tokenInput.addEventListener('input', () => {
+    const wrapper = tokenInput.closest('.token-field-wrapper');
+    const hint = document.getElementById('token-required-hint');
+    if (tokenInput.value.length > 0) {
+      wrapper.classList.remove('required');
+      hint.classList.remove('visible');
+    } else if (!platformHasToken(document.getElementById('new-repo-platform').value)) {
+      wrapper.classList.add('required');
+      hint.classList.add('visible');
+    }
+  });
 });
 
 function doLogout() {
@@ -176,8 +194,15 @@ function populateTeamMembers() {
   // For the filter dropdown, we show member IDs until the user generates a report.
   const sel = document.getElementById('filter-member');
   sel.innerHTML = '<option value="">All members</option>';
-  // We don't have displayNames for members yet, but we can show the IDs.
-  // The actual names will appear in report cards from the SSE stream.
+  const team = getTeam();
+  if (team && team.Members) {
+    team.Members.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = m.displayName || m.username;
+      sel.appendChild(opt);
+    });
+  }
 }
 
 // ══════════════════════════════════════════════════════
@@ -190,41 +215,74 @@ function getTeam() {
 
 function renderRepos() {
   const team = getTeam();
-  const repos = (team && team.RepositoryIDs) || [];
+  const repos = (team && team.Repositories) || [];
   const isTeamLeader = session.roles.includes('TEAM_LEADER');
   const list = document.getElementById('repo-list');
   if (repos.length === 0) {
     list.innerHTML = '<div class="no-repos">No repositories configured.</div>';
     return;
   }
-  list.innerHTML = repos.map((repoId, i) => `
+  list.innerHTML = repos.map(repo => `
     <div class="repo-item">
       <span class="repo-icon">📦</span>
       <div class="repo-info">
-        <div class="repo-name" title="${escapeHtml(repoId)}">${escapeHtml(repoId)}</div>
+        <div class="repo-name" title="${escapeHtml(repo.fullName)}">${escapeHtml(repo.fullName)}</div>
       </div>
-      ${isTeamLeader ? `<button class="repo-remove" onclick="removeRepo('${escapeHtml(repoId)}')" title="Remove">✕</button>` : ''}
+      ${isTeamLeader ? `<button class="repo-remove" onclick="removeRepo('${escapeHtml(repo.id)}')" title="Remove">✕</button>` : ''}
     </div>
   `).join('');
+}
+
+const TOKEN_SENTINEL = '••••••••••••';
+
+function platformHasToken(platform) {
+  const team = getTeam();
+  if (!team || !team.Repositories) return false;
+  return team.Repositories.some(r => r.platform.toUpperCase() === platform.toUpperCase());
+}
+
+function updateTokenField() {
+  const platform = document.getElementById('new-repo-platform').value;
+  const tokenInput = document.getElementById('new-repo-token');
+  const wrapper = tokenInput.closest('.token-field-wrapper');
+  const hint = document.getElementById('token-required-hint');
+  if (platformHasToken(platform)) {
+    tokenInput.value = TOKEN_SENTINEL;
+    tokenInput.placeholder = 'Using existing token';
+    wrapper.classList.remove('required');
+    hint.classList.remove('visible');
+  } else {
+    tokenInput.value = '';
+    tokenInput.placeholder = 'API token (PAT)';
+    wrapper.classList.add('required');
+    hint.classList.add('visible');
+  }
 }
 
 function toggleAddRepo() {
   const form = document.getElementById('add-repo-form');
   const open = form.style.display === 'block';
   form.style.display = open ? 'none' : 'block';
-  if (!open) document.getElementById('new-repo-name').focus();
+  if (!open) {
+    updateTokenField();
+    document.getElementById('new-repo-name').focus();
+  }
 }
 
 async function addRepo() {
   const name = document.getElementById('new-repo-name').value.trim();
+  const platform = document.getElementById('new-repo-platform').value;
+  const rawToken = document.getElementById('new-repo-token').value;
+  const token = rawToken === TOKEN_SENTINEL ? '' : rawToken.trim();
   const team = getTeam();
   if (!name || !team) return;
+  if (!token && !platformHasToken(platform)) { alert('API token is required to access repository data.'); return; }
 
   try {
     const resp = await apiFetch(`/api/teams/${encodeURIComponent(team.ID)}/repositories`, {
       method: 'POST',
       headers: authHeaders(),
-      body: JSON.stringify({ repoId: name }),
+      body: JSON.stringify({ fullName: name, platform: platform, apiToken: token }),
     });
 
     if (!resp.ok) {
@@ -234,6 +292,7 @@ async function addRepo() {
     }
 
     document.getElementById('new-repo-name').value = '';
+    document.getElementById('new-repo-token').value = '';
     document.getElementById('add-repo-form').style.display = 'none';
 
     // Refresh teams
@@ -277,6 +336,91 @@ async function refreshTeams() {
   } catch (e) {
     // keep current data
   }
+}
+
+// ══════════════════════════════════════════════════════
+// PROFILE — Platform Usernames
+// ══════════════════════════════════════════════════════
+
+async function showProfile() {
+  document.getElementById('screen-app').style.display = 'none';
+  document.getElementById('screen-profile').style.display = 'flex';
+
+  const container = document.getElementById('profile-platforms');
+  container.innerHTML = '<div style="color:var(--text-muted)">Loading…</div>';
+  document.getElementById('profile-status').textContent = '';
+
+  try {
+    const resp = await apiFetch('/api/profile');
+    if (!resp.ok) throw new Error('Failed to load profile');
+    const profile = await resp.json();
+
+    const team = getTeam();
+    const repos = (team && team.Repositories) || [];
+    const platforms = [...new Set(repos.map(r => r.platform))];
+
+    if (platforms.length === 0) {
+      container.innerHTML = '<div style="color:var(--text-muted)">No repositories configured for your team yet.</div>';
+      return;
+    }
+
+    const currentUsernames = profile.platformUsernames || {};
+
+    container.innerHTML = platforms.map(p => {
+      const current = currentUsernames[p] || '';
+      const displayName = p === 'GITHUB' ? 'GitHub' : p === 'GITLAB' ? 'GitLab' : p;
+      return `
+        <div class="profile-platform-row">
+          <div class="profile-platform-label">${escapeHtml(displayName)}</div>
+          <div class="profile-platform-input">
+            <input type="text" id="profile-username-${escapeHtml(p)}"
+                   value="${escapeHtml(current)}"
+                   placeholder="Your ${escapeHtml(displayName)} username"
+                   data-platform="${escapeHtml(p)}">
+            <button class="btn btn-primary btn-sm" onclick="savePlatformUsername('${escapeHtml(p)}')">Save</button>
+          </div>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    container.innerHTML = '<div style="color:#cf222e">Failed to load profile.</div>';
+  }
+}
+
+async function savePlatformUsername(platform) {
+  const input = document.getElementById('profile-username-' + platform);
+  const username = input.value.trim();
+  const statusEl = document.getElementById('profile-status');
+
+  if (!username) {
+    statusEl.textContent = 'Username cannot be empty.';
+    statusEl.style.color = '#cf222e';
+    return;
+  }
+
+  try {
+    const resp = await apiFetch('/api/profile/platform-username', {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify({ platform: platform, username: username }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error || resp.statusText);
+    }
+
+    statusEl.textContent = 'Saved!';
+    statusEl.style.color = '#1a7f37';
+    setTimeout(() => { statusEl.textContent = ''; }, 2000);
+  } catch (e) {
+    statusEl.textContent = 'Failed to save: ' + e.message;
+    statusEl.style.color = '#cf222e';
+  }
+}
+
+function backToApp() {
+  document.getElementById('screen-profile').style.display = 'none';
+  document.getElementById('screen-app').style.display = 'flex';
 }
 
 // ══════════════════════════════════════════════════════
@@ -371,14 +515,17 @@ async function generateReport() {
 
   const types = [];
   if (document.getElementById('chk-commit').checked) types.push('COMMIT');
+  if (document.getElementById('chk-merged').checked) types.push('MERGED_PR');
   if (document.getElementById('chk-issue').checked) types.push('ISSUE');
   if (document.getElementById('chk-review').checked) types.push('PR_REVIEW');
 
   const team = getTeam();
   const teamId = team ? team.ID : '';
+  const memberId = document.getElementById('filter-member').value;
 
   const weights = {
     commit: parseFloat(document.getElementById('w-commit').value) || 1,
+    merged: parseFloat(document.getElementById('w-merged').value) || 1.5,
     issue:  parseFloat(document.getElementById('w-issue').value)  || 0.5,
     review: parseFloat(document.getElementById('w-review').value) || 0.8,
   };
@@ -400,6 +547,7 @@ async function generateReport() {
       headers: authHeaders(),
       body: JSON.stringify({
         teamId: teamId,
+        memberId: memberId,
         since: since,
         until: until,
         types: types,
@@ -648,9 +796,9 @@ function computeScore(report, weights) {
   for (const c of report.counts) {
     switch (c.type) {
       case 'COMMIT':    score += c.count * weights.commit; break;
+      case 'MERGED_PR': score += c.count * weights.merged; break;
       case 'ISSUE':     score += c.count * weights.issue;  break;
       case 'PR_REVIEW': score += c.count * weights.review; break;
-      case 'MERGED_PR': score += c.count * weights.review; break;
     }
   }
   return Math.round(score * 10) / 10;
@@ -674,36 +822,39 @@ function buildUserCard(report, since, until, weights) {
   const score = computeScore(report, weights);
 
   const commitCount = getCountByType(report, 'COMMIT');
+  const mergedCount = getCountByType(report, 'MERGED_PR');
   const issueCount = getCountByType(report, 'ISSUE');
-  const reviewCount = getCountByType(report, 'PR_REVIEW') + getCountByType(report, 'MERGED_PR');
+  const reviewCount = getCountByType(report, 'PR_REVIEW');
 
   const color = stringToColor(user.username || user.id);
 
   const card = document.createElement('div');
   card.className = 'user-report-card';
   card.innerHTML = `
-    <div class="card-header">
+    <div class="card-header" role="button" tabindex="0">
       <div class="avatar" style="background:${color}">${(user.displayName || user.username || '?')[0].toUpperCase()}</div>
       <div class="card-user-info">
         <div class="card-user-name">${escapeHtml(user.displayName || user.username)}</div>
         <div class="card-user-meta">@${escapeHtml(user.username)} &nbsp;&middot;&nbsp; ${escapeHtml(since)} &rarr; ${escapeHtml(until)}</div>
       </div>
       <div class="stat-pills">
-        <span class="stat-pill pill-commit">&#x2B21; ${commitCount} commits</span>
-        <span class="stat-pill pill-issue">&#x25CE; ${issueCount} issues</span>
-        <span class="stat-pill pill-review">&#x1F441; ${reviewCount} reviews</span>
+        <span class="stat-pill pill-commit" data-filter-type="COMMIT">&#x2B21; ${commitCount} commits</span>
+        <span class="stat-pill pill-merged" data-filter-type="MERGED_PR">&#x2714; ${mergedCount} merged PRs</span>
+        <span class="stat-pill pill-issue" data-filter-type="ISSUE">&#x25CE; ${issueCount} issues</span>
+        <span class="stat-pill pill-review" data-filter-type="PR_REVIEW">&#x1F441; ${reviewCount} reviews</span>
       </div>
       ${isWeighted ? `
       <div class="score-badge">
         <div class="score-value">${score}</div>
         <div class="score-label">Score</div>
       </div>` : ''}
+      <span class="collapse-chevron">&#x25BC;</span>
     </div>
     <div class="card-body">
       ${activities.length === 0
         ? '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">No matching activity in this period.</div>'
         : `<div class="activity-list">${activities.map(a => `
-            <div class="activity-item">
+            <div class="activity-item" data-activity-type="${escapeHtml(a.type)}">
               <span class="activity-icon">${activityIcon(a.type)}</span>
               <div class="activity-content">
                 <div class="activity-title">${a.url ? `<a href="${escapeHtml(a.url)}" target="_blank" style="color:inherit;text-decoration:none">${escapeHtml(a.title)}</a>` : escapeHtml(a.title)}</div>
@@ -717,6 +868,38 @@ function buildUserCard(report, since, until, weights) {
           </div>`
       }
     </div>`;
+
+  const header = card.querySelector('.card-header');
+  const body = card.querySelector('.card-body');
+
+  header.addEventListener('click', (e) => {
+    if (e.target.closest('.stat-pill')) return;
+    card.classList.toggle('collapsed');
+  });
+
+  card.querySelectorAll('.stat-pill[data-filter-type]').forEach(pill => {
+    pill.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const type = pill.dataset.filterType;
+      const wasActive = pill.classList.contains('active');
+
+      card.querySelectorAll('.stat-pill').forEach(p => p.classList.remove('active'));
+
+      if (wasActive) {
+        body.querySelectorAll('.activity-item').forEach(item => item.style.display = '');
+      } else {
+        pill.classList.add('active');
+        body.querySelectorAll('.activity-item').forEach(item => {
+          item.style.display = item.dataset.activityType === type ? '' : 'none';
+        });
+      }
+
+      if (card.classList.contains('collapsed')) {
+        card.classList.remove('collapsed');
+      }
+    });
+  });
+
   return card;
 }
 
@@ -728,21 +911,24 @@ function buildSummaryCard(reports, weights) {
   const isWeighted = reportType === 'weighted';
   let totalActivities = 0;
   let totalCommits = 0;
+  let totalMerged = 0;
   let totalIssues = 0;
   let totalReviews = 0;
 
   const userResults = reports.map(r => {
     const commits = getCountByType(r, 'COMMIT');
+    const merged = getCountByType(r, 'MERGED_PR');
     const issues = getCountByType(r, 'ISSUE');
-    const reviews = getCountByType(r, 'PR_REVIEW') + getCountByType(r, 'MERGED_PR');
+    const reviews = getCountByType(r, 'PR_REVIEW');
     const actCount = (r.activities || []).length;
     totalActivities += actCount;
     totalCommits += commits;
+    totalMerged += merged;
     totalIssues += issues;
     totalReviews += reviews;
     return {
       user: r.user,
-      commits, issues, reviews,
+      commits, merged, issues, reviews,
       score: computeScore(r, weights),
     };
   });
@@ -759,6 +945,10 @@ function buildSummaryCard(reports, weights) {
       <div class="summary-stat stat-blue">
         <div class="stat-value">${totalCommits}</div>
         <div class="stat-label">Commits</div>
+      </div>
+      <div class="summary-stat stat-green">
+        <div class="stat-value">${totalMerged}</div>
+        <div class="stat-label">Merged PRs</div>
       </div>
       <div class="summary-stat stat-green">
         <div class="stat-value">${totalIssues}</div>
@@ -782,6 +972,7 @@ function buildSummaryCard(reports, weights) {
               <th style="width:40px">#</th>
               <th>Member</th>
               <th class="right">Commits</th>
+              <th class="right">Merged PRs</th>
               <th class="right">Issues</th>
               <th class="right">Reviews</th>
               <th class="right">Score</th>
@@ -800,6 +991,7 @@ function buildSummaryCard(reports, weights) {
                   </div>
                 </td>
                 <td class="right lb-breakdown">${r.commits} &times; ${weights.commit}</td>
+                <td class="right lb-breakdown">${r.merged} &times; ${weights.merged}</td>
                 <td class="right lb-breakdown">${r.issues} &times; ${weights.issue}</td>
                 <td class="right lb-breakdown">${r.reviews} &times; ${weights.review}</td>
                 <td class="right"><span class="lb-score">${r.score}</span></td>

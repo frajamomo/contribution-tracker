@@ -14,12 +14,11 @@ INSERT INTO user_platform_usernames (user_id, platform, username) VALUES
 ON CONFLICT (user_id, platform) DO NOTHING;
 
 -- Accounts (password: "secret" hashed with bcrypt cost 10)
--- $2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy
 INSERT INTO user_accounts (id, username, password_hash, roles, user_id) VALUES
-    ('a-alice', 'alice', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', '{TEAM_MEMBER}', 'u-alice'),
-    ('a-bob',   'bob',   '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', '{TEAM_MEMBER}', 'u-bob'),
-    ('a-carol', 'carol', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', '{TEAM_MEMBER,TEAM_LEADER}', 'u-carol'),
-    ('a-admin', 'admin', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', '{ADMIN}', 'u-admin')
+    ('a-alice', 'alice', '$2a$10$O3RpMvpbcSp0O62mvMfenuXfY243t61X97TmNniwCNfIqorxc4RFW', '{TEAM_MEMBER}', 'u-alice'),
+    ('a-bob',   'bob',   '$2a$10$O3RpMvpbcSp0O62mvMfenuXfY243t61X97TmNniwCNfIqorxc4RFW', '{TEAM_MEMBER}', 'u-bob'),
+    ('a-carol', 'carol', '$2a$10$O3RpMvpbcSp0O62mvMfenuXfY243t61X97TmNniwCNfIqorxc4RFW', '{TEAM_MEMBER,TEAM_LEADER}', 'u-carol'),
+    ('a-admin', 'admin', '$2a$10$O3RpMvpbcSp0O62mvMfenuXfY243t61X97TmNniwCNfIqorxc4RFW', '{ADMIN}', 'u-admin')
 ON CONFLICT (id) DO NOTHING;
 
 -- Team

@@ -8,6 +8,7 @@ import (
 
 type ReportQuery struct {
 	TeamID      string
+	MemberID    string
 	CallerID    string
 	CallerRoles map[domain.Role]bool
 	Since       time.Time

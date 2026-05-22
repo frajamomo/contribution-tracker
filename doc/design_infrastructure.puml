@@ -80,6 +80,21 @@ package Infrastructure {
   GitHubActivityFetcher --> GitHubApiClient
   GitLabActivityFetcher --> GitLabApiClient
 
+  note bottom of GitHubActivityFetcher
+    **PR Review fetching strategy:**
+    GitHub has no direct "reviews by user" endpoint.
+    fetchReviews() searches for PRs reviewed by the user
+    via /search/issues?q=reviewed-by:{user}+repo:{repo},
+    then fetches /repos/{repo}/pulls/{number}/reviews
+    for each matched PR.
+
+    Each Submit Review action on a PR produces a distinct
+    review record with its own ID and URL. Multiple reviews
+    on the same PR (e.g. initial review + follow-up after
+    changes) are **expected duplicates by title** but are
+    separate events with unique review IDs.
+  end note
+
   ' ── Persistence adapters (Repository Pattern) ──
 
   class PgxUserAccountRepo implements Application.UserAccountRepository

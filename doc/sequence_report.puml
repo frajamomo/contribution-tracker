@@ -13,7 +13,6 @@ actor Browser
 participant "ReportHandler\n(Controller)" as Handler
 participant "AuthMiddleware\n(RBAC)" as Auth
 participant "ReportService\n(Model)" as Service
-participant "ConfigRepository" as Config
 participant "TeamRepository" as Teams
 participant "UserRepository" as Users
 participant "RepositoryStore" as Repos
@@ -52,9 +51,6 @@ Handler --> Browser : HTTP 200\nContent-Type: text/event-stream
 Handler -> Service : generateReport(ctx, query, channel)\n[goroutine]
 activate Service
 
-Service -> Config : get("GITHUB_API_KEY")
-Config --> Service : apiKey
-
 Service -> Teams : findById(teamId)
 Teams --> Service : Team {memberIds, repositoryIds}
 
@@ -81,8 +77,14 @@ loop for each team member
     no platform-specific mapping exists.
   end note
 
-  Service -> Registry : build(platform, apiKey)
-  Registry -> Registry : factory.build(apiKey)
+  note over Service
+    Group team repos by (platform, token).
+    Repos without an API token are skipped.
+    Build one fetcher per group.
+  end note
+
+  Service -> Registry : build(platform, repo.apiToken)
+  Registry -> Registry : factory.build(apiToken)
   Registry --> Service : ActivityFetcher\n(may also implement RepoDiscoverer)
 
   note over Service

@@ -65,7 +65,10 @@ func (m *mockUserRepo) FindByID(ctx context.Context, id string) (*domain.User, e
 }
 
 func (m *mockUserRepo) FindByIDs(ctx context.Context, ids []string) ([]domain.User, error) {
-	return m.findByIDsFn(ctx, ids)
+	if m.findByIDsFn != nil {
+		return m.findByIDsFn(ctx, ids)
+	}
+	return nil, nil
 }
 
 func (m *mockUserRepo) FindByAccountID(ctx context.Context, accountID string) (*domain.User, error) {
@@ -133,6 +136,33 @@ func (m *mockConfigRepo) Set(ctx context.Context, key, value string) error {
 
 func (m *mockConfigRepo) FindAll(ctx context.Context) (map[string]string, error) {
 	return m.findAllFn(ctx)
+}
+
+// --- Mock RepositoryStore ---
+
+type mockRepoStore struct {
+	upsertFn    func(ctx context.Context, repo *domain.Repository) (*domain.Repository, error)
+	findByIDsFn func(ctx context.Context, ids []string) ([]domain.Repository, error)
+}
+
+func (m *mockRepoStore) FindByID(ctx context.Context, id string) (*domain.Repository, error) {
+	return nil, nil
+}
+func (m *mockRepoStore) FindByIDs(ctx context.Context, ids []string) ([]domain.Repository, error) {
+	if m.findByIDsFn != nil {
+		return m.findByIDsFn(ctx, ids)
+	}
+	return nil, nil
+}
+func (m *mockRepoStore) Save(ctx context.Context, repo *domain.Repository) error { return nil }
+func (m *mockRepoStore) Upsert(ctx context.Context, repo *domain.Repository) (*domain.Repository, error) {
+	if m.upsertFn != nil {
+		return m.upsertFn(ctx, repo)
+	}
+	return repo, nil
+}
+func (m *mockRepoStore) FindAll(ctx context.Context) ([]domain.Repository, error) {
+	return nil, nil
 }
 
 // --- Helper to create an authenticated request ---

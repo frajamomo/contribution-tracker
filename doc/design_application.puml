@@ -243,17 +243,17 @@ package Application {
     -users: UserRepository
     -teams: TeamRepository
     -repos: RepositoryStore
-    -config: ConfigRepository
     -registry: ActivityFetcherRegistry
     +generateReport(ctx: Context, query: ReportQuery,\n  out: Channel<UserReport>): void
   }
 
   note right of ReportService
-    1. Load API key from ConfigRepository
-    2. Resolve team members (scoped by caller role)
+    1. Resolve team members (scoped by caller role)
+    2. Load team repos, group by (platform, token)
     3. For each member: fetch contributions
-       from configured repos via registry
+       from each fetcher group via registry
     4. Stream UserReport per member via channel
+    Repos without an API token are skipped.
   end note
 
   class BackupService implements BackupServicePort {
@@ -288,7 +288,6 @@ package Application {
   ReportService --> UserRepository
   ReportService --> TeamRepository
   ReportService --> RepositoryStore
-  ReportService --> ConfigRepository
   ReportService ..> ReportEvent            : streams >
 
   BackupService --> BackupRepository

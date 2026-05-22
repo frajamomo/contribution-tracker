@@ -8,11 +8,10 @@ import (
 	"contribution-tracker/internal/domain"
 )
 
-func setupReportService() (*ReportService, *mockTeamRepo, *mockUserRepo, *mockRepoStore, *mockConfigRepo) {
+func setupReportService() (*ReportService, *mockTeamRepo, *mockUserRepo, *mockRepoStore) {
 	userRepo := newMockUserRepo()
 	teamRepo := newMockTeamRepo()
 	repoStore := newMockRepoStore()
-	configRepo := newMockConfigRepo()
 	registry := NewActivityFetcherRegistry()
 
 	commit := domain.NewCommit(
@@ -42,16 +41,15 @@ func setupReportService() (*ReportService, *mockTeamRepo, *mockUserRepo, *mockRe
 		Name:     "repo",
 		FullName: "org/repo",
 		Platform: domain.PlatformGitHub,
+		APIToken: "test-key",
 	}
 
-	configRepo.config["GITHUB_API_KEY"] = "test-key"
-
-	svc := NewReportService(userRepo, teamRepo, repoStore, configRepo, registry)
-	return svc, teamRepo, userRepo, repoStore, configRepo
+	svc := NewReportService(userRepo, teamRepo, repoStore, registry)
+	return svc, teamRepo, userRepo, repoStore
 }
 
 func TestReportService_TeamLeader_SeesAllMembers(t *testing.T) {
-	svc, _, _, _, _ := setupReportService()
+	svc, _, _, _ := setupReportService()
 
 	query := ReportQuery{
 		TeamID:      "t-eng",
@@ -86,7 +84,7 @@ func TestReportService_TeamLeader_SeesAllMembers(t *testing.T) {
 }
 
 func TestReportService_TeamMember_SeesOnlySelf(t *testing.T) {
-	svc, _, _, _, _ := setupReportService()
+	svc, _, _, _ := setupReportService()
 
 	query := ReportQuery{
 		TeamID:      "t-eng",
@@ -120,7 +118,6 @@ func TestReportService_ISPCheck_DiscovererCalled(t *testing.T) {
 	userRepo := newMockUserRepo()
 	teamRepo := newMockTeamRepo()
 	repoStore := newMockRepoStore()
-	configRepo := newMockConfigRepo()
 	registry := NewActivityFetcherRegistry()
 
 	discoveredRepo := domain.Repository{
@@ -146,11 +143,10 @@ func TestReportService_ISPCheck_DiscovererCalled(t *testing.T) {
 		RepositoryIDs: []string{"r-1"},
 	}
 	repoStore.repos["r-1"] = &domain.Repository{
-		ID: "r-1", FullName: "org/repo", Platform: domain.PlatformGitHub,
+		ID: "r-1", FullName: "org/repo", Platform: domain.PlatformGitHub, APIToken: "key",
 	}
-	configRepo.config["GITHUB_API_KEY"] = "key"
 
-	svc := NewReportService(userRepo, teamRepo, repoStore, configRepo, registry)
+	svc := NewReportService(userRepo, teamRepo, repoStore, registry)
 
 	out := make(chan ReportEvent, 10)
 	svc.GenerateReport(context.Background(), ReportQuery{
@@ -166,5 +162,49 @@ func TestReportService_ISPCheck_DiscovererCalled(t *testing.T) {
 
 	if _, err := repoStore.FindByID(context.Background(), "r-discovered"); err != nil {
 		t.Error("expected discovered repo to be upserted into store")
+	}
+}
+
+func TestReportService_SkipsReposWithNoToken(t *testing.T) {
+	userRepo := newMockUserRepo()
+	teamRepo := newMockTeamRepo()
+	repoStore := newMockRepoStore()
+	registry := NewActivityFetcherRegistry()
+
+	fetcher := &mockActivityFetcher{
+		platforms:  []domain.GitPlatform{domain.PlatformGitHub},
+		types:      []domain.ActivityType{domain.ActivityTypeCommit},
+		activities: []domain.Activity{},
+	}
+	registry.Register(domain.PlatformGitHub, &mockFetcherFactory{fetcher: fetcher})
+
+	userRepo.users["u-alice"] = &domain.User{ID: "u-alice", Username: "alice"}
+	teamRepo.teams["t-eng"] = &domain.Team{
+		ID:            "t-eng",
+		MemberIDs:     []string{"u-alice"},
+		RepositoryIDs: []string{"r-notoken"},
+	}
+	repoStore.repos["r-notoken"] = &domain.Repository{
+		ID: "r-notoken", FullName: "org/notoken", Platform: domain.PlatformGitHub, APIToken: "",
+	}
+
+	svc := NewReportService(userRepo, teamRepo, repoStore, registry)
+
+	out := make(chan ReportEvent, 10)
+	svc.GenerateReport(context.Background(), ReportQuery{
+		TeamID:      "t-eng",
+		CallerID:    "u-alice",
+		CallerRoles: map[domain.Role]bool{domain.RoleTeamMember: true},
+		Since:       time.Now().Add(-24 * time.Hour),
+		Until:       time.Now(),
+	}, out)
+
+	for event := range out {
+		if event.GetType() == ReportEventTypeUserReport {
+			ure := event.(*UserReportEvent)
+			if len(ure.Report.Activities) != 0 {
+				t.Errorf("expected no activities for tokenless repo, got %d", len(ure.Report.Activities))
+			}
+		}
 	}
 }

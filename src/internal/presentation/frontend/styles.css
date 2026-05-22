@@ -67,6 +67,36 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; c
 }
 .login-hint strong { display: block; margin-bottom: 4px; color: var(--text); font-size: 12px; }
 
+/* ── PROFILE ── */
+#screen-profile {
+  display: none;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #f0f4ff 0%, #f6f8fa 100%);
+}
+.profile-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px 40px;
+  width: 480px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+}
+.profile-header { margin-bottom: 24px; }
+.profile-header h2 { font-size: 20px; font-weight: 700; margin: 12px 0 4px; }
+.profile-header p { font-size: 13px; color: var(--text-muted); }
+.profile-platform-row { margin-bottom: 16px; }
+.profile-platform-label { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.profile-platform-input { display: flex; gap: 8px; }
+.profile-platform-input input {
+  flex: 1; padding: 8px 12px;
+  border: 1px solid var(--border); border-radius: 6px;
+  font-size: 14px; outline: none; transition: border-color 0.15s;
+}
+.profile-platform-input input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(9,105,218,0.12); }
+.profile-status { font-size: 13px; margin-top: 12px; min-height: 20px; }
+
 /* ── APP SHELL ── */
 #screen-app { display: none; flex-direction: column; min-height: 100vh; }
 
@@ -131,6 +161,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; c
   font-size: 13px; outline: none; background: var(--white);
 }
 .add-repo-form input:focus, .add-repo-form select:focus { border-color: var(--blue); }
+.token-field-wrapper { position: relative; }
+.token-field-wrapper input { padding-right: 90px; }
+.token-required-hint {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  font-size: 11px; font-weight: 600; color: var(--red);
+  pointer-events: none; display: none;
+}
+.token-required-hint.visible { display: inline; }
+.token-field-wrapper.required input { border-color: var(--red); }
+.token-field-wrapper.required input:focus { border-color: var(--red); box-shadow: 0 0 0 3px rgba(207,34,46,0.12); }
 .add-repo-actions { display: flex; gap: 6px; }
 
 /* ── MAIN ── */
@@ -200,10 +240,22 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; c
   font-size: 12px; font-weight: 500; white-space: nowrap;
 }
 .pill-commit { background: var(--blue-light); color: var(--blue); }
+.pill-merged { background: #ddf4ff; color: #0550ae; }
 .pill-issue  { background: var(--green-light); color: var(--green); }
 .pill-review { background: var(--purple-light); color: var(--purple); }
 
+.card-header { cursor: pointer; user-select: none; }
+.collapse-chevron {
+  font-size: 11px; color: var(--text-muted); transition: transform 0.2s;
+  margin-left: auto; flex-shrink: 0;
+}
+.user-report-card.collapsed .collapse-chevron { transform: rotate(-90deg); }
 .card-body { padding: 0; }
+.user-report-card.collapsed .card-body { display: none; }
+.user-report-card.collapsed .card-header { border-bottom: none; }
+.stat-pill { cursor: pointer; transition: outline 0.15s, opacity 0.15s; }
+.stat-pill:hover { opacity: 0.85; }
+.stat-pill.active { outline: 2px solid currentColor; outline-offset: 1px; }
 .activity-list { display: flex; flex-direction: column; }
 .activity-item {
   display: flex; align-items: flex-start; gap: 12px;

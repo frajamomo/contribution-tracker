@@ -13,7 +13,6 @@ type ReportService struct {
 	users    UserRepository
 	teams    TeamRepository
 	repos    RepositoryStore
-	config   ConfigRepository
 	registry *ActivityFetcherRegistry
 }
 
@@ -21,16 +20,20 @@ func NewReportService(
 	users UserRepository,
 	teams TeamRepository,
 	repos RepositoryStore,
-	config ConfigRepository,
 	registry *ActivityFetcherRegistry,
 ) *ReportService {
 	return &ReportService{
 		users:    users,
 		teams:    teams,
 		repos:    repos,
-		config:   config,
 		registry: registry,
 	}
+}
+
+type fetcherGroup struct {
+	platform domain.GitPlatform
+	token    string
+	repos    []domain.Repository
 }
 
 func (s *ReportService) GenerateReport(ctx context.Context, query ReportQuery, out chan<- ReportEvent) {
@@ -46,6 +49,8 @@ func (s *ReportService) GenerateReport(ctx context.Context, query ReportQuery, o
 	isOnlyMember := !query.CallerRoles[domain.RoleTeamLeader] && !query.CallerRoles[domain.RoleAdmin]
 	if isOnlyMember {
 		memberIDs = []string{query.CallerID}
+	} else if query.MemberID != "" {
+		memberIDs = []string{query.MemberID}
 	} else {
 		memberIDs = team.MemberIDs
 	}
@@ -62,23 +67,30 @@ func (s *ReportService) GenerateReport(ctx context.Context, query ReportQuery, o
 		return
 	}
 
-	reposByPlatform := make(map[domain.GitPlatform][]domain.Repository)
-	for _, r := range teamRepos {
-		reposByPlatform[r.Platform] = append(reposByPlatform[r.Platform], r)
+	groupKey := func(r domain.Repository) string {
+		return r.Platform.Name + "\x00" + r.APIToken
 	}
-
-	apiKeys := make(map[domain.GitPlatform]string)
-	for platform := range reposByPlatform {
-		key, err := s.config.Get(ctx, platform.Name+"_API_KEY")
-		if err != nil {
-			slog.Warn("no API key configured", "platform", platform.Name)
+	groupMap := make(map[string]*fetcherGroup)
+	for _, r := range teamRepos {
+		if r.APIToken == "" {
+			slog.Warn("repository has no API token, skipping", "repo", r.FullName)
 			continue
 		}
-		apiKeys[platform] = key
+		key := groupKey(r)
+		if g, ok := groupMap[key]; ok {
+			g.repos = append(g.repos, r)
+		} else {
+			groupMap[key] = &fetcherGroup{platform: r.Platform, token: r.APIToken, repos: []domain.Repository{r}}
+		}
+	}
+
+	groups := make([]fetcherGroup, 0, len(groupMap))
+	for _, g := range groupMap {
+		groups = append(groups, *g)
 	}
 
 	for _, member := range members {
-		report := s.fetchMemberReport(ctx, member, reposByPlatform, apiKeys, query)
+		report := s.fetchMemberReport(ctx, member, groups, query)
 		out <- &UserReportEvent{Report: report}
 	}
 
@@ -88,29 +100,22 @@ func (s *ReportService) GenerateReport(ctx context.Context, query ReportQuery, o
 func (s *ReportService) fetchMemberReport(
 	ctx context.Context,
 	member domain.User,
-	reposByPlatform map[domain.GitPlatform][]domain.Repository,
-	apiKeys map[domain.GitPlatform]string,
+	groups []fetcherGroup,
 	query ReportQuery,
 ) UserReport {
 	var allActivities []domain.Activity
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 
-	for platform, repos := range reposByPlatform {
-		apiKey, ok := apiKeys[platform]
-		if !ok {
-			continue
-		}
-
-		fetcher, err := s.registry.Build(platform, apiKey)
+	for _, group := range groups {
+		fetcher, err := s.registry.Build(group.platform, group.token)
 		if err != nil {
-			slog.Error("failed to build fetcher", "platform", platform.Name, "err", err)
+			slog.Error("failed to build fetcher", "platform", group.platform.Name, "err", err)
 			continue
 		}
 
-		platformUsername := member.GetPlatformUsername(platform)
+		platformUsername := member.GetPlatformUsername(group.platform)
 
-		// ISP check — ADR-5
 		if discoverer, ok := fetcher.(RepoDiscoverer); ok {
 			discovered, err := discoverer.DiscoverUserRepos(ctx, platformUsername)
 			if err == nil {
@@ -143,7 +148,7 @@ func (s *ReportService) fetchMemberReport(
 				allActivities = append(allActivities, searched...)
 				mu.Unlock()
 			}
-		}(fetcher, repos, platformUsername)
+		}(fetcher, group.repos, platformUsername)
 	}
 
 	wg.Wait()

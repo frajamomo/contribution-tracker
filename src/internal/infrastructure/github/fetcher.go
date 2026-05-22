@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"contribution-tracker/internal/application"
@@ -233,33 +234,35 @@ func (f *ActivityFetcher) searchIssues(
 	since, until time.Time,
 	repoSet map[string]bool,
 ) ([]domain.Activity, error) {
-	q := fmt.Sprintf("author:%s type:issue created:%s..%s",
-		username,
-		since.Format("2006-01-02"), until.Format("2006-01-02"))
-
-	params := url.Values{}
-	params.Set("q", q)
-	path := "/search/issues?" + params.Encode()
-
-	body, err := f.client.Get(ctx, path)
-	if err != nil {
-		return nil, err
+	var repoFilters []string
+	for name := range repoSet {
+		repoFilters = append(repoFilters, "repo:"+name)
 	}
 
-	var result ghSearchResult[ghIssue]
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("parsing search response: %w", err)
+	var allItems []ghIssue
+	for _, rf := range repoFilters {
+		q := fmt.Sprintf("author:%s type:issue %s created:%s..%s",
+			username, rf,
+			since.Format("2006-01-02"), until.Format("2006-01-02"))
+
+		params := url.Values{}
+		params.Set("q", q)
+		path := "/search/issues?" + params.Encode()
+
+		body, err := f.client.Get(ctx, path)
+		if err != nil {
+			return nil, err
+		}
+
+		var result ghSearchResult[ghIssue]
+		if err := json.Unmarshal(body, &result); err != nil {
+			return nil, fmt.Errorf("parsing search response: %w", err)
+		}
+		allItems = append(allItems, result.Items...)
 	}
 
 	var activities []domain.Activity
-	for _, issue := range result.Items {
-		repoName := ""
-		if issue.Repository != nil {
-			repoName = issue.Repository.FullName
-		}
-		if !repoSet[repoName] {
-			continue
-		}
+	for _, issue := range allItems {
 
 		var labels []string
 		for _, l := range issue.Labels {
@@ -287,33 +290,35 @@ func (f *ActivityFetcher) searchMergedPRs(
 	since, until time.Time,
 	repoSet map[string]bool,
 ) ([]domain.Activity, error) {
-	q := fmt.Sprintf("author:%s type:pr is:merged created:%s..%s",
-		username,
-		since.Format("2006-01-02"), until.Format("2006-01-02"))
-
-	params := url.Values{}
-	params.Set("q", q)
-	path := "/search/issues?" + params.Encode()
-
-	body, err := f.client.Get(ctx, path)
-	if err != nil {
-		return nil, err
+	var repoFilters []string
+	for name := range repoSet {
+		repoFilters = append(repoFilters, "repo:"+name)
 	}
 
-	var result ghSearchResult[ghIssue]
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("parsing search response: %w", err)
+	var allItems []ghIssue
+	for _, rf := range repoFilters {
+		q := fmt.Sprintf("author:%s type:pr is:merged %s created:%s..%s",
+			username, rf,
+			since.Format("2006-01-02"), until.Format("2006-01-02"))
+
+		params := url.Values{}
+		params.Set("q", q)
+		path := "/search/issues?" + params.Encode()
+
+		body, err := f.client.Get(ctx, path)
+		if err != nil {
+			return nil, err
+		}
+
+		var result ghSearchResult[ghIssue]
+		if err := json.Unmarshal(body, &result); err != nil {
+			return nil, fmt.Errorf("parsing search response: %w", err)
+		}
+		allItems = append(allItems, result.Items...)
 	}
 
 	var activities []domain.Activity
-	for _, item := range result.Items {
-		repoName := ""
-		if item.Repository != nil {
-			repoName = item.Repository.FullName
-		}
-		if !repoSet[repoName] {
-			continue
-		}
+	for _, item := range allItems {
 
 		mergedAt := item.CreatedAt
 		if item.PullRequest != nil && item.PullRequest.MergedAt != nil {
@@ -329,6 +334,19 @@ func (f *ActivityFetcher) searchMergedPRs(
 	}
 
 	return activities, nil
+}
+
+func repoFromURL(htmlURL string) string {
+	// https://github.com/owner/repo/issues/123 → owner/repo
+	const prefix = "https://github.com/"
+	if !strings.HasPrefix(htmlURL, prefix) {
+		return ""
+	}
+	parts := strings.SplitN(htmlURL[len(prefix):], "/", 4)
+	if len(parts) < 2 {
+		return ""
+	}
+	return parts[0] + "/" + parts[1]
 }
 
 func makeTypeSet(types []domain.ActivityType) map[string]bool {

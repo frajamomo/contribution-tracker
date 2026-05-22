@@ -65,14 +65,14 @@ func main() {
 	registry.Register(domain.PlatformGitLab, gitlab.NewFetcherFactory(glBaseURL))
 
 	authService := application.NewAuthService(userAccountRepo, userRepo, teamRepo, jwtSecret)
-	reportService := application.NewReportService(userRepo, teamRepo, repoStore, configRepo, registry)
+	reportService := application.NewReportService(userRepo, teamRepo, repoStore, registry)
 	backupService := application.NewBackupService(backupRepo)
 
 	authMiddleware := presentation.NewAuthMiddleware(authService)
 	authHandler := presentation.NewAuthHandler(authService, userRepo)
 	reportHandler := presentation.NewReportHandler(reportService)
 	profileHandler := presentation.NewProfileHandler(userRepo)
-	teamHandler := presentation.NewTeamHandler(teamRepo)
+	teamHandler := presentation.NewTeamHandler(teamRepo, repoStore, userRepo)
 	backupHandler := presentation.NewBackupHandler(backupService)
 	configHandler := presentation.NewConfigHandler(configRepo)
 
