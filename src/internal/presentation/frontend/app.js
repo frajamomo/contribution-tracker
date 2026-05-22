@@ -173,6 +173,7 @@ async function mountApp() {
     document.getElementById('report-type-row').classList.add('hidden');
     document.getElementById('add-repo-btn').classList.add('hidden');
     document.getElementById('repo-managed-note').classList.remove('hidden');
+    setReportType('activity');
     document.getElementById('form-hint').textContent = 'Repositories are configured by your team leader.';
   }
 
