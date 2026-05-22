@@ -29,6 +29,7 @@ type UserAccountRepository interface {
 	FindByUsername(ctx context.Context, username string) (*domain.UserAccount, error)
 	FindByID(ctx context.Context, id string) (*domain.UserAccount, error)
 	Save(ctx context.Context, account *domain.UserAccount) error
+	Delete(ctx context.Context, userID string) error
 	FindAll(ctx context.Context) ([]domain.UserAccount, error)
 }
 
@@ -38,6 +39,8 @@ type UserRepository interface {
 	FindByAccountID(ctx context.Context, accountID string) (*domain.User, error)
 	UpdatePlatformUsername(ctx context.Context, userID string, platform domain.GitPlatform, username string) error
 	FindAll(ctx context.Context) ([]domain.User, error)
+	Save(ctx context.Context, user *domain.User) error
+	Delete(ctx context.Context, id string) error
 }
 
 type TeamRepository interface {
@@ -47,6 +50,9 @@ type TeamRepository interface {
 	FindAll(ctx context.Context) ([]domain.Team, error)
 	AddRepository(ctx context.Context, teamID, repoID string) error
 	RemoveRepository(ctx context.Context, teamID, repoID string) error
+	AddMember(ctx context.Context, teamID, userID string) error
+	RemoveMember(ctx context.Context, teamID, userID string) error
+	Delete(ctx context.Context, id string) error
 }
 
 type RepositoryStore interface {

@@ -188,6 +188,99 @@
       <div id="admin-panel" class="hidden">
         <div class="admin-grid">
 
+          <!-- User Management -->
+          <div class="admin-card admin-card-wide">
+            <div class="admin-card-header">
+              <div class="admin-card-title">👥 User &amp; Team Management</div>
+              <div class="admin-card-subtitle">Create users, assign roles, and manage team membership</div>
+            </div>
+            <div class="admin-card-body">
+              <div class="admin-toolbar">
+                <button class="btn btn-primary btn-sm" id="toggle-create-user-btn" onclick="toggleCreateUserForm()">+ New User</button>
+              </div>
+
+              <!-- Create user form (hidden by default) -->
+              <div class="create-user-form" id="create-user-form">
+                <div class="create-user-row">
+                  <div class="form-field">
+                    <label>Username</label>
+                    <input type="text" id="new-user-username" placeholder="username" autocomplete="off">
+                  </div>
+                  <div class="form-field">
+                    <label>Display Name</label>
+                    <input type="text" id="new-user-display" placeholder="Display Name">
+                  </div>
+                  <div class="form-field">
+                    <label>Email</label>
+                    <input type="email" id="new-user-email" placeholder="user@example.com">
+                  </div>
+                  <div class="form-field">
+                    <label>Password</label>
+                    <input type="password" id="new-user-password" placeholder="Password">
+                  </div>
+                </div>
+                <div class="create-user-row" style="margin-top:8px">
+                  <div class="form-field" style="flex:none">
+                    <label>Roles</label>
+                    <div class="checkbox-group">
+                      <label class="checkbox-label"><input type="checkbox" id="role-team-member" checked> Team Member</label>
+                      <label class="checkbox-label"><input type="checkbox" id="role-team-leader"> Team Leader</label>
+                      <label class="checkbox-label"><input type="checkbox" id="role-admin"> Admin</label>
+                    </div>
+                  </div>
+                  <div class="form-field" style="flex:none;align-self:flex-end">
+                    <div style="display:flex;gap:6px">
+                      <button class="btn btn-primary btn-sm" onclick="createUser()">Create</button>
+                      <button class="btn btn-secondary btn-sm" onclick="toggleCreateUserForm()">Cancel</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="create-user-status" id="create-user-status"></div>
+              </div>
+
+              <!-- User table -->
+              <table class="admin-user-table" id="admin-user-table">
+                <thead>
+                  <tr>
+                    <th>Username</th>
+                    <th>Display Name</th>
+                    <th>Email</th>
+                    <th>Roles</th>
+                    <th>Teams</th>
+                    <th style="width:60px"></th>
+                  </tr>
+                </thead>
+                <tbody id="admin-user-tbody">
+                  <tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Loading...</td></tr>
+                </tbody>
+              </table>
+
+              <!-- Team list -->
+              <div style="margin-top:24px;border-top:1px solid var(--border);padding-top:16px">
+                <div class="admin-toolbar" style="display:flex;align-items:center;justify-content:space-between">
+                  <div style="font-size:13px;font-weight:600">Teams</div>
+                  <button class="btn btn-primary btn-sm" onclick="toggleCreateTeamForm()">+ New Team</button>
+                </div>
+
+                <div class="create-team-form" id="create-team-form">
+                  <div style="display:flex;gap:12px;align-items:flex-end">
+                    <div class="form-field" style="flex:1">
+                      <label>Team Name</label>
+                      <input type="text" id="new-team-name" placeholder="e.g. Frontend" autocomplete="off">
+                    </div>
+                    <div style="display:flex;gap:6px">
+                      <button class="btn btn-primary btn-sm" onclick="createTeam()">Create</button>
+                      <button class="btn btn-secondary btn-sm" onclick="toggleCreateTeamForm()">Cancel</button>
+                    </div>
+                  </div>
+                  <div class="create-team-status" id="create-team-status"></div>
+                </div>
+
+                <div id="admin-team-list"></div>
+              </div>
+            </div>
+          </div>
+
           <!-- Export -->
           <div class="admin-card">
             <div class="admin-card-header">

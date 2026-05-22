@@ -91,6 +91,36 @@ type ConfigSetRequest struct {
 	Value string `json:"value"`
 }
 
+type CreateUserRequest struct {
+	Username    string   `json:"username"`
+	DisplayName string   `json:"displayName"`
+	Email       string   `json:"email"`
+	Password    string   `json:"password"`
+	Roles       []string `json:"roles"`
+}
+
+type AdminUserDTO struct {
+	ID          string           `json:"id"`
+	Username    string           `json:"username"`
+	DisplayName string           `json:"displayName"`
+	Email       string           `json:"email"`
+	Roles       []string         `json:"roles"`
+	Teams       []TeamSummaryDTO `json:"teams"`
+}
+
+type TeamSummaryDTO struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type AddMemberRequest struct {
+	UserID string `json:"userId"`
+}
+
+type CreateTeamRequest struct {
+	Name string `json:"name"`
+}
+
 type SSEEventData struct {
 	Type   string      `json:"type"`
 	Report *UserReportDTO `json:"report,omitempty"`

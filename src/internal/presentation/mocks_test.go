@@ -58,6 +58,8 @@ type mockUserRepo struct {
 	findByAccountIDFn       func(ctx context.Context, accountID string) (*domain.User, error)
 	updatePlatformUsernameFn func(ctx context.Context, userID string, platform domain.GitPlatform, username string) error
 	findAllFn               func(ctx context.Context) ([]domain.User, error)
+	saveFn                  func(ctx context.Context, user *domain.User) error
+	deleteFn                func(ctx context.Context, id string) error
 }
 
 func (m *mockUserRepo) FindByID(ctx context.Context, id string) (*domain.User, error) {
@@ -83,6 +85,20 @@ func (m *mockUserRepo) FindAll(ctx context.Context) ([]domain.User, error) {
 	return m.findAllFn(ctx)
 }
 
+func (m *mockUserRepo) Save(ctx context.Context, user *domain.User) error {
+	if m.saveFn != nil {
+		return m.saveFn(ctx, user)
+	}
+	return nil
+}
+
+func (m *mockUserRepo) Delete(ctx context.Context, id string) error {
+	if m.deleteFn != nil {
+		return m.deleteFn(ctx, id)
+	}
+	return nil
+}
+
 // --- Mock TeamRepository ---
 
 type mockTeamRepo struct {
@@ -92,6 +108,9 @@ type mockTeamRepo struct {
 	findAllFn        func(ctx context.Context) ([]domain.Team, error)
 	addRepoFn        func(ctx context.Context, teamID, repoID string) error
 	removeRepoFn     func(ctx context.Context, teamID, repoID string) error
+	addMemberFn      func(ctx context.Context, teamID, userID string) error
+	removeMemberFn   func(ctx context.Context, teamID, userID string) error
+	deleteFn         func(ctx context.Context, id string) error
 }
 
 func (m *mockTeamRepo) FindByID(ctx context.Context, id string) (*domain.Team, error) {
@@ -116,6 +135,72 @@ func (m *mockTeamRepo) AddRepository(ctx context.Context, teamID, repoID string)
 
 func (m *mockTeamRepo) RemoveRepository(ctx context.Context, teamID, repoID string) error {
 	return m.removeRepoFn(ctx, teamID, repoID)
+}
+
+func (m *mockTeamRepo) AddMember(ctx context.Context, teamID, userID string) error {
+	if m.addMemberFn != nil {
+		return m.addMemberFn(ctx, teamID, userID)
+	}
+	return nil
+}
+
+func (m *mockTeamRepo) RemoveMember(ctx context.Context, teamID, userID string) error {
+	if m.removeMemberFn != nil {
+		return m.removeMemberFn(ctx, teamID, userID)
+	}
+	return nil
+}
+
+func (m *mockTeamRepo) Delete(ctx context.Context, id string) error {
+	if m.deleteFn != nil {
+		return m.deleteFn(ctx, id)
+	}
+	return nil
+}
+
+// --- Mock UserAccountRepository ---
+
+type mockUserAccountRepo struct {
+	findByUsernameFn func(ctx context.Context, username string) (*domain.UserAccount, error)
+	findByIDFn       func(ctx context.Context, id string) (*domain.UserAccount, error)
+	saveFn           func(ctx context.Context, account *domain.UserAccount) error
+	deleteFn         func(ctx context.Context, userID string) error
+	findAllFn        func(ctx context.Context) ([]domain.UserAccount, error)
+}
+
+func (m *mockUserAccountRepo) FindByUsername(ctx context.Context, username string) (*domain.UserAccount, error) {
+	if m.findByUsernameFn != nil {
+		return m.findByUsernameFn(ctx, username)
+	}
+	return nil, nil
+}
+
+func (m *mockUserAccountRepo) FindByID(ctx context.Context, id string) (*domain.UserAccount, error) {
+	if m.findByIDFn != nil {
+		return m.findByIDFn(ctx, id)
+	}
+	return nil, nil
+}
+
+func (m *mockUserAccountRepo) Save(ctx context.Context, account *domain.UserAccount) error {
+	if m.saveFn != nil {
+		return m.saveFn(ctx, account)
+	}
+	return nil
+}
+
+func (m *mockUserAccountRepo) Delete(ctx context.Context, userID string) error {
+	if m.deleteFn != nil {
+		return m.deleteFn(ctx, userID)
+	}
+	return nil
+}
+
+func (m *mockUserAccountRepo) FindAll(ctx context.Context) ([]domain.UserAccount, error) {
+	if m.findAllFn != nil {
+		return m.findAllFn(ctx)
+	}
+	return nil, nil
 }
 
 // --- Mock ConfigRepository ---

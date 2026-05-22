@@ -2,6 +2,7 @@ package presentation
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"contribution-tracker/internal/application"
@@ -34,6 +35,7 @@ func (h *BackupHandler) Restore(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.backupService.Restore(r.Context(), &backup); err != nil {
+		slog.Error("restore failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "failed to restore backup")
 		return
 	}

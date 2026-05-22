@@ -75,6 +75,7 @@ func main() {
 	teamHandler := presentation.NewTeamHandler(teamRepo, repoStore, userRepo)
 	backupHandler := presentation.NewBackupHandler(backupService)
 	configHandler := presentation.NewConfigHandler(configRepo)
+	adminHandler := presentation.NewAdminHandler(userRepo, userAccountRepo, teamRepo)
 
 	router := presentation.NewRouter(
 		authMiddleware,
@@ -84,6 +85,7 @@ func main() {
 		teamHandler,
 		backupHandler,
 		configHandler,
+		adminHandler,
 	)
 
 	port := envOrDefault("PORT", "8080")

@@ -105,6 +105,14 @@ func (r *PgxTeamRepo) Save(ctx context.Context, team *domain.Team) error {
 	return tx.Commit(ctx)
 }
 
+func (r *PgxTeamRepo) Delete(ctx context.Context, id string) error {
+	_, err := r.pool.Exec(ctx, "DELETE FROM teams WHERE id = $1", id)
+	if err != nil {
+		return fmt.Errorf("delete team: %w", err)
+	}
+	return nil
+}
+
 func (r *PgxTeamRepo) FindAll(ctx context.Context) ([]domain.Team, error) {
 	rows, err := r.pool.Query(ctx, "SELECT id, name FROM teams ORDER BY name")
 	if err != nil {
@@ -154,6 +162,26 @@ func (r *PgxTeamRepo) RemoveRepository(ctx context.Context, teamID, repoID strin
 		teamID, repoID)
 	if err != nil {
 		return fmt.Errorf("remove repository from team: %w", err)
+	}
+	return nil
+}
+
+func (r *PgxTeamRepo) AddMember(ctx context.Context, teamID, userID string) error {
+	_, err := r.pool.Exec(ctx,
+		"INSERT INTO team_members (team_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+		teamID, userID)
+	if err != nil {
+		return fmt.Errorf("add member to team: %w", err)
+	}
+	return nil
+}
+
+func (r *PgxTeamRepo) RemoveMember(ctx context.Context, teamID, userID string) error {
+	_, err := r.pool.Exec(ctx,
+		"DELETE FROM team_members WHERE team_id = $1 AND user_id = $2",
+		teamID, userID)
+	if err != nil {
+		return fmt.Errorf("remove member from team: %w", err)
 	}
 	return nil
 }

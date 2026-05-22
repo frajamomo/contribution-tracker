@@ -140,8 +140,9 @@ async function mountApp() {
 
   if (isAdmin) {
     document.getElementById('page-title').textContent = 'Administration';
-    document.getElementById('page-subtitle').textContent = 'Manage application data backups and restores.';
+    document.getElementById('page-subtitle').textContent = 'Manage users, teams, backups, and configuration.';
     document.getElementById('report-type-row').classList.add('hidden');
+    loadAdminUsers();
     return;
   }
 
@@ -785,6 +786,271 @@ function readFileAsText(file) {
     reader.onerror = () => reject(new Error('Failed to read file'));
     reader.readAsText(file);
   });
+}
+
+// ══════════════════════════════════════════════════════
+// ADMIN: USER & TEAM MANAGEMENT
+// ══════════════════════════════════════════════════════
+
+let adminUsers = [];
+let allTeams = [];
+
+async function loadAdminUsers() {
+  try {
+    const [usersResp, teamsResp] = await Promise.all([
+      apiFetch('/api/admin/users'),
+      apiFetch('/api/teams'),
+    ]);
+    if (usersResp.ok) adminUsers = await usersResp.json();
+    if (teamsResp.ok) allTeams = await teamsResp.json();
+    if (!Array.isArray(allTeams)) allTeams = [];
+  } catch (e) {
+    adminUsers = [];
+    allTeams = [];
+  }
+  renderAdminUsers();
+  renderAdminTeams();
+}
+
+function renderAdminUsers() {
+  const tbody = document.getElementById('admin-user-tbody');
+  if (!adminUsers || adminUsers.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">No users found.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = adminUsers.map(u => {
+    const rolePills = (u.roles || []).map(r => {
+      const cls = r === 'ADMIN' ? 'role-ad' : r === 'TEAM_LEADER' ? 'role-tl' : 'role-tm';
+      const label = r === 'ADMIN' ? 'Admin' : r === 'TEAM_LEADER' ? 'Leader' : 'Member';
+      return `<span class="user-role-pill ${cls}">${label}</span>`;
+    }).join('');
+
+    const teamTags = (u.teams || []).map(t =>
+      `<span class="team-tag">${escapeHtml(t.name)}<button class="remove-team" onclick="removeMemberFromTeam('${escapeHtml(t.id)}','${escapeHtml(u.id)}')" title="Remove from team">&times;</button></span>`
+    ).join('');
+
+    const availableTeams = allTeams.filter(t => !(u.teams || []).some(ut => ut.id === t.ID));
+    const addTeamSelect = availableTeams.length > 0
+      ? `<select class="add-team-select" onchange="addMemberToTeam(this.value,'${escapeHtml(u.id)}');this.value=''">
+           <option value="">+ team</option>
+           ${availableTeams.map(t => `<option value="${escapeHtml(t.ID)}">${escapeHtml(t.Name)}</option>`).join('')}
+         </select>`
+      : '';
+
+    return `<tr>
+      <td>${escapeHtml(u.username)}</td>
+      <td>${escapeHtml(u.displayName)}</td>
+      <td>${escapeHtml(u.email || '')}</td>
+      <td>${rolePills}</td>
+      <td>${teamTags}${addTeamSelect}</td>
+      <td><button class="btn-danger" onclick="deleteUser('${escapeHtml(u.id)}','${escapeHtml(u.username)}')" title="Delete user">&#x1F5D1;</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function toggleCreateUserForm() {
+  const form = document.getElementById('create-user-form');
+  form.classList.toggle('visible');
+  if (form.classList.contains('visible')) {
+    document.getElementById('new-user-username').focus();
+  }
+  document.getElementById('create-user-status').textContent = '';
+}
+
+async function createUser() {
+  const username = document.getElementById('new-user-username').value.trim().toLowerCase();
+  const displayName = document.getElementById('new-user-display').value.trim();
+  const email = document.getElementById('new-user-email').value.trim();
+  const password = document.getElementById('new-user-password').value;
+  const statusEl = document.getElementById('create-user-status');
+
+  if (!username || !displayName || !password) {
+    statusEl.textContent = 'Username, display name, and password are required.';
+    statusEl.style.color = '#cf222e';
+    return;
+  }
+
+  const roles = [];
+  if (document.getElementById('role-team-member').checked) roles.push('TEAM_MEMBER');
+  if (document.getElementById('role-team-leader').checked) roles.push('TEAM_LEADER');
+  if (document.getElementById('role-admin').checked) roles.push('ADMIN');
+
+  try {
+    const resp = await apiFetch('/api/admin/users', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ username, displayName, email, password, roles }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      statusEl.textContent = 'Failed: ' + (err.error || resp.statusText);
+      statusEl.style.color = '#cf222e';
+      return;
+    }
+
+    document.getElementById('new-user-username').value = '';
+    document.getElementById('new-user-display').value = '';
+    document.getElementById('new-user-email').value = '';
+    document.getElementById('new-user-password').value = '';
+    document.getElementById('role-team-member').checked = true;
+    document.getElementById('role-team-leader').checked = false;
+    document.getElementById('role-admin').checked = false;
+    document.getElementById('create-user-form').classList.remove('visible');
+    statusEl.textContent = '';
+
+    await loadAdminUsers();
+  } catch (e) {
+    statusEl.textContent = 'Failed: ' + e.message;
+    statusEl.style.color = '#cf222e';
+  }
+}
+
+async function deleteUser(userId, username) {
+  if (!confirm(`Delete user "${username}"? This cannot be undone.`)) return;
+
+  try {
+    const resp = await apiFetch(`/api/admin/users/${encodeURIComponent(userId)}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      alert('Failed to delete user: ' + (err.error || resp.statusText));
+      return;
+    }
+
+    await loadAdminUsers();
+  } catch (e) {
+    alert('Failed to delete user: ' + e.message);
+  }
+}
+
+async function addMemberToTeam(teamId, userId) {
+  if (!teamId) return;
+  try {
+    const resp = await apiFetch(`/api/teams/${encodeURIComponent(teamId)}/members`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ userId }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      alert('Failed to add member: ' + (err.error || resp.statusText));
+      return;
+    }
+
+    await loadAdminUsers();
+  } catch (e) {
+    alert('Failed to add member: ' + e.message);
+  }
+}
+
+async function removeMemberFromTeam(teamId, userId) {
+  try {
+    const resp = await apiFetch(`/api/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      alert('Failed to remove member: ' + (err.error || resp.statusText));
+      return;
+    }
+
+    await loadAdminUsers();
+  } catch (e) {
+    alert('Failed to remove member: ' + e.message);
+  }
+}
+
+// ── TEAM CRUD ──
+
+function renderAdminTeams() {
+  const container = document.getElementById('admin-team-list');
+  if (!allTeams || allTeams.length === 0) {
+    container.innerHTML = '<div style="padding:10px;text-align:center;color:var(--text-muted);font-size:13px">No teams yet.</div>';
+    return;
+  }
+  container.innerHTML = allTeams.map(t => {
+    const memberCount = (t.MemberIDs || []).length;
+    return `<div class="admin-team-item">
+      <div>
+        <span style="font-weight:500">${escapeHtml(t.Name)}</span>
+        <span style="color:var(--text-muted);font-size:11px;margin-left:8px">${memberCount} member${memberCount !== 1 ? 's' : ''}</span>
+      </div>
+      <button class="btn-danger" onclick="deleteTeam('${escapeHtml(t.ID)}','${escapeHtml(t.Name)}')" title="Delete team">&#x1F5D1;</button>
+    </div>`;
+  }).join('');
+}
+
+function toggleCreateTeamForm() {
+  const form = document.getElementById('create-team-form');
+  form.classList.toggle('visible');
+  if (form.classList.contains('visible')) {
+    document.getElementById('new-team-name').focus();
+  }
+  document.getElementById('create-team-status').textContent = '';
+}
+
+async function createTeam() {
+  const name = document.getElementById('new-team-name').value.trim();
+  const statusEl = document.getElementById('create-team-status');
+
+  if (!name) {
+    statusEl.textContent = 'Team name is required.';
+    statusEl.style.color = '#cf222e';
+    return;
+  }
+
+  try {
+    const resp = await apiFetch('/api/admin/teams', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ name }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      statusEl.textContent = 'Failed: ' + (err.error || resp.statusText);
+      statusEl.style.color = '#cf222e';
+      return;
+    }
+
+    document.getElementById('new-team-name').value = '';
+    document.getElementById('create-team-form').classList.remove('visible');
+    statusEl.textContent = '';
+
+    await loadAdminUsers();
+  } catch (e) {
+    statusEl.textContent = 'Failed: ' + e.message;
+    statusEl.style.color = '#cf222e';
+  }
+}
+
+async function deleteTeam(teamId, teamName) {
+  if (!confirm(`Delete team "${teamName}"? Members will be unassigned but not deleted.`)) return;
+
+  try {
+    const resp = await apiFetch(`/api/admin/teams/${encodeURIComponent(teamId)}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      alert('Failed to delete team: ' + (err.error || resp.statusText));
+      return;
+    }
+
+    await loadAdminUsers();
+  } catch (e) {
+    alert('Failed to delete team: ' + e.message);
+  }
 }
 
 // ══════════════════════════════════════════════════════

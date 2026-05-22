@@ -45,6 +45,14 @@ func (r *PgxUserAccountRepo) Save(ctx context.Context, account *domain.UserAccou
 	return nil
 }
 
+func (r *PgxUserAccountRepo) Delete(ctx context.Context, userID string) error {
+	_, err := r.pool.Exec(ctx, "DELETE FROM user_accounts WHERE user_id = $1", userID)
+	if err != nil {
+		return fmt.Errorf("delete account: %w", err)
+	}
+	return nil
+}
+
 func (r *PgxUserAccountRepo) FindAll(ctx context.Context) ([]domain.UserAccount, error) {
 	rows, err := r.pool.Query(ctx,
 		"SELECT id, username, password_hash, roles, user_id FROM user_accounts ORDER BY username")

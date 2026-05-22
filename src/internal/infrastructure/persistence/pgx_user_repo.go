@@ -121,6 +121,26 @@ func (r *PgxUserRepo) FindAll(ctx context.Context) ([]domain.User, error) {
 	return users, nil
 }
 
+func (r *PgxUserRepo) Save(ctx context.Context, user *domain.User) error {
+	_, err := r.pool.Exec(ctx,
+		`INSERT INTO users (id, username, display_name, email, avatar_url)
+		 VALUES ($1, $2, $3, $4, $5)
+		 ON CONFLICT (id) DO UPDATE SET username=$2, display_name=$3, email=$4, avatar_url=$5`,
+		user.ID, user.Username, user.DisplayName, user.Email, user.AvatarURL)
+	if err != nil {
+		return fmt.Errorf("save user: %w", err)
+	}
+	return nil
+}
+
+func (r *PgxUserRepo) Delete(ctx context.Context, id string) error {
+	_, err := r.pool.Exec(ctx, "DELETE FROM users WHERE id = $1", id)
+	if err != nil {
+		return fmt.Errorf("delete user: %w", err)
+	}
+	return nil
+}
+
 func (r *PgxUserRepo) loadPlatformUsernames(ctx context.Context, userID string) (map[domain.GitPlatform]string, error) {
 	rows, err := r.pool.Query(ctx,
 		"SELECT platform, username FROM user_platform_usernames WHERE user_id = $1", userID)

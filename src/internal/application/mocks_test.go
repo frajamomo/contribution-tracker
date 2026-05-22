@@ -47,6 +47,16 @@ func (m *mockUserAccountRepo) FindAll(_ context.Context) ([]domain.UserAccount, 
 	return result, nil
 }
 
+func (m *mockUserAccountRepo) Delete(_ context.Context, userID string) error {
+	for id, a := range m.accounts {
+		if a.UserID == userID {
+			delete(m.accounts, id)
+			return nil
+		}
+	}
+	return nil
+}
+
 // --- Mock UserRepository ---
 
 type mockUserRepo struct {
@@ -105,6 +115,16 @@ func (m *mockUserRepo) FindAll(_ context.Context) ([]domain.User, error) {
 		result = append(result, *u)
 	}
 	return result, nil
+}
+
+func (m *mockUserRepo) Save(_ context.Context, user *domain.User) error {
+	m.users[user.ID] = user
+	return nil
+}
+
+func (m *mockUserRepo) Delete(_ context.Context, id string) error {
+	delete(m.users, id)
+	return nil
 }
 
 // --- Mock TeamRepository ---
@@ -172,6 +192,35 @@ func (m *mockTeamRepo) RemoveRepository(_ context.Context, teamID, repoID string
 		}
 	}
 	t.RepositoryIDs = filtered
+	return nil
+}
+
+func (m *mockTeamRepo) AddMember(_ context.Context, teamID, userID string) error {
+	t, ok := m.teams[teamID]
+	if !ok {
+		return NewNotFoundError("team not found")
+	}
+	t.MemberIDs = append(t.MemberIDs, userID)
+	return nil
+}
+
+func (m *mockTeamRepo) RemoveMember(_ context.Context, teamID, userID string) error {
+	t, ok := m.teams[teamID]
+	if !ok {
+		return NewNotFoundError("team not found")
+	}
+	var filtered []string
+	for _, id := range t.MemberIDs {
+		if id != userID {
+			filtered = append(filtered, id)
+		}
+	}
+	t.MemberIDs = filtered
+	return nil
+}
+
+func (m *mockTeamRepo) Delete(_ context.Context, id string) error {
+	delete(m.teams, id)
 	return nil
 }
 

@@ -114,6 +114,21 @@ func (r *PgxBackupRepo) Restore(ctx context.Context, data *domain.BackupFile) er
 		}
 	}
 
+	for _, repo := range data.Repositories {
+		token := repo.APIToken
+		if token != "" {
+			if decoded, err := base64.StdEncoding.DecodeString(token); err == nil {
+				token = string(decoded)
+			}
+		}
+		_, err := tx.Exec(ctx,
+			"INSERT INTO repositories (id, name, full_name, url, platform, api_token) VALUES ($1,$2,$3,$4,$5,$6)",
+			repo.ID, repo.Name, repo.FullName, repo.URL, repo.Platform.Name, token)
+		if err != nil {
+			return fmt.Errorf("restore repo %s: %w", repo.ID, err)
+		}
+	}
+
 	for _, t := range data.Teams {
 		_, err := tx.Exec(ctx, "INSERT INTO teams (id, name) VALUES ($1,$2)", t.ID, t.Name)
 		if err != nil {
@@ -132,21 +147,6 @@ func (r *PgxBackupRepo) Restore(ctx context.Context, data *domain.BackupFile) er
 			if err != nil {
 				return fmt.Errorf("restore team repo: %w", err)
 			}
-		}
-	}
-
-	for _, repo := range data.Repositories {
-		token := repo.APIToken
-		if token != "" {
-			if decoded, err := base64.StdEncoding.DecodeString(token); err == nil {
-				token = string(decoded)
-			}
-		}
-		_, err := tx.Exec(ctx,
-			"INSERT INTO repositories (id, name, full_name, url, platform, api_token) VALUES ($1,$2,$3,$4,$5,$6)",
-			repo.ID, repo.Name, repo.FullName, repo.URL, repo.Platform.Name, token)
-		if err != nil {
-			return fmt.Errorf("restore repo %s: %w", repo.ID, err)
 		}
 	}
 

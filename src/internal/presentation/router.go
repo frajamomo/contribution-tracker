@@ -17,6 +17,7 @@ func NewRouter(
 	teamHandler *TeamHandler,
 	backupHandler *BackupHandler,
 	configHandler *ConfigHandler,
+	adminHandler *AdminHandler,
 ) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
@@ -38,6 +39,8 @@ func NewRouter(
 
 				r.Post("/teams/{teamId}/repositories", teamHandler.AddRepository)
 				r.Delete("/teams/{teamId}/repositories/{repoId}", teamHandler.RemoveRepository)
+				r.Post("/teams/{teamId}/members", adminHandler.AddMember)
+				r.Delete("/teams/{teamId}/members/{userId}", adminHandler.RemoveMember)
 			})
 
 			r.Group(func(r chi.Router) {
@@ -47,6 +50,11 @@ func NewRouter(
 				r.Post("/admin/restore", backupHandler.Restore)
 				r.Get("/admin/config", configHandler.GetAll)
 				r.Put("/admin/config", configHandler.Set)
+				r.Get("/admin/users", adminHandler.ListUsers)
+				r.Post("/admin/users", adminHandler.CreateUser)
+				r.Delete("/admin/users/{userId}", adminHandler.DeleteUser)
+				r.Post("/admin/teams", adminHandler.CreateTeam)
+				r.Delete("/admin/teams/{teamId}", adminHandler.DeleteTeam)
 			})
 		})
 	})
