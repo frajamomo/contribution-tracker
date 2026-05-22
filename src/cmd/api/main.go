@@ -86,6 +86,7 @@ func main() {
 		backupHandler,
 		configHandler,
 		adminHandler,
+		teamRepo,
 	)
 
 	port := envOrDefault("PORT", "8080")

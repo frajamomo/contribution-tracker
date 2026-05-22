@@ -32,6 +32,7 @@ func setupReportService() (*ReportService, *mockTeamRepo, *mockUserRepo, *mockRe
 	teamRepo.teams["t-eng"] = &domain.Team{
 		ID:            "t-eng",
 		Name:          "Engineering",
+		LeaderIDs:     []string{"u-alice"},
 		MemberIDs:     []string{"u-alice", "u-bob"},
 		RepositoryIDs: []string{"r-1"},
 	}
@@ -88,7 +89,7 @@ func TestReportService_TeamMember_SeesOnlySelf(t *testing.T) {
 
 	query := ReportQuery{
 		TeamID:      "t-eng",
-		CallerID:    "u-alice",
+		CallerID:    "u-bob",
 		CallerRoles: map[domain.Role]bool{domain.RoleTeamMember: true},
 		Since:       time.Now().Add(-24 * time.Hour),
 		Until:       time.Now(),
@@ -103,8 +104,8 @@ func TestReportService_TeamMember_SeesOnlySelf(t *testing.T) {
 		if event.GetType() == ReportEventTypeUserReport {
 			userReports++
 			ure := event.(*UserReportEvent)
-			if ure.Report.User.ID != "u-alice" {
-				t.Errorf("expected only alice's report, got %s", ure.Report.User.ID)
+			if ure.Report.User.ID != "u-bob" {
+				t.Errorf("expected only bob's report, got %s", ure.Report.User.ID)
 			}
 		}
 	}

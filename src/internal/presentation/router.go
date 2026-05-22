@@ -3,6 +3,7 @@ package presentation
 import (
 	"net/http"
 
+	"contribution-tracker/internal/application"
 	"contribution-tracker/internal/domain"
 
 	"github.com/go-chi/chi/v5"
@@ -18,6 +19,7 @@ func NewRouter(
 	backupHandler *BackupHandler,
 	configHandler *ConfigHandler,
 	adminHandler *AdminHandler,
+	teamRepo application.TeamRepository,
 ) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
@@ -35,7 +37,7 @@ func NewRouter(
 			r.Get("/teams", teamHandler.ListTeams)
 
 			r.Group(func(r chi.Router) {
-				r.Use(authMiddleware.RequireRole(domain.RoleTeamLeader, domain.RoleAdmin))
+				r.Use(RequireTeamLeaderOrAdmin(teamRepo))
 
 				r.Post("/teams/{teamId}/repositories", teamHandler.AddRepository)
 				r.Delete("/teams/{teamId}/repositories/{repoId}", teamHandler.RemoveRepository)
@@ -55,6 +57,8 @@ func NewRouter(
 				r.Delete("/admin/users/{userId}", adminHandler.DeleteUser)
 				r.Post("/admin/teams", adminHandler.CreateTeam)
 				r.Delete("/admin/teams/{teamId}", adminHandler.DeleteTeam)
+				r.Post("/admin/teams/{teamId}/leaders", adminHandler.AddLeader)
+				r.Delete("/admin/teams/{teamId}/leaders/{userId}", adminHandler.RemoveLeader)
 			})
 		})
 	})

@@ -1,7 +1,9 @@
 package presentation
 
 import (
+	"context"
 	"net/http"
+	"strings"
 
 	"contribution-tracker/internal/application"
 	"contribution-tracker/internal/domain"
@@ -71,7 +73,7 @@ func (h *AdminHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		for _, t := range teams {
 			for _, mid := range t.MemberIDs {
 				if mid == u.ID {
-					dto.Teams = append(dto.Teams, TeamSummaryDTO{ID: t.ID, Name: t.Name})
+					dto.Teams = append(dto.Teams, TeamSummaryDTO{ID: t.ID, Name: t.Name, LeaderIDs: t.LeaderIDs})
 					break
 				}
 			}
@@ -157,6 +159,18 @@ func (h *AdminHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "userId")
 
+	teams, err := h.teamRepo.FindByMemberID(r.Context(), userID)
+	if err == nil {
+		for _, t := range teams {
+			for _, lid := range t.LeaderIDs {
+				if lid == userID && len(t.LeaderIDs) == 1 {
+					writeError(w, http.StatusBadRequest, "user is the only leader of team "+t.Name+"; reassign leadership first")
+					return
+				}
+			}
+		}
+	}
+
 	if err := h.userAccountRepo.Delete(r.Context(), userID); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to delete account")
 		return
@@ -177,16 +191,24 @@ func (h *AdminHandler) CreateTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Name == "" {
-		writeError(w, http.StatusBadRequest, "name is required")
+	if req.Name == "" || req.LeaderID == "" {
+		writeError(w, http.StatusBadRequest, "name and leaderId are required")
+		return
+	}
+
+	leader, err := h.userRepo.FindByID(r.Context(), req.LeaderID)
+	if err != nil || leader == nil {
+		writeError(w, http.StatusBadRequest, "leader user not found")
 		return
 	}
 
 	teamID := "t-" + uuid.New().String()[:8]
 
 	team := &domain.Team{
-		ID:   teamID,
-		Name: req.Name,
+		ID:        teamID,
+		Name:      req.Name,
+		LeaderIDs: []string{req.LeaderID},
+		MemberIDs: []string{req.LeaderID},
 	}
 
 	if err := h.teamRepo.Save(r.Context(), team); err != nil {
@@ -194,15 +216,28 @@ func (h *AdminHandler) CreateTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, TeamSummaryDTO{ID: teamID, Name: req.Name})
+	h.ensureLeaderRole(r.Context(), req.LeaderID)
+
+	writeJSON(w, http.StatusCreated, TeamSummaryDTO{ID: teamID, Name: req.Name, LeaderIDs: []string{req.LeaderID}})
 }
 
 func (h *AdminHandler) DeleteTeam(w http.ResponseWriter, r *http.Request) {
 	teamID := chi.URLParam(r, "teamId")
 
+	team, err := h.teamRepo.FindByID(r.Context(), teamID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "team not found")
+		return
+	}
+	formerLeaderIDs := team.LeaderIDs
+
 	if err := h.teamRepo.Delete(r.Context(), teamID); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to delete team")
 		return
+	}
+
+	for _, leaderID := range formerLeaderIDs {
+		h.removeLeaderRoleIfOrphaned(r.Context(), leaderID)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
@@ -235,9 +270,114 @@ func (h *AdminHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "userId")
 
 	if err := h.teamRepo.RemoveMember(r.Context(), teamID, userID); err != nil {
+		if strings.Contains(err.Error(), "leader") {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to remove member")
 		return
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "removed"})
+}
+
+func (h *AdminHandler) AddLeader(w http.ResponseWriter, r *http.Request) {
+	teamID := chi.URLParam(r, "teamId")
+
+	var req AddLeaderRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.UserID == "" {
+		writeError(w, http.StatusBadRequest, "userId is required")
+		return
+	}
+
+	team, err := h.teamRepo.FindByID(r.Context(), teamID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "team not found")
+		return
+	}
+
+	isMember := false
+	for _, mid := range team.MemberIDs {
+		if mid == req.UserID {
+			isMember = true
+			break
+		}
+	}
+	if !isMember {
+		writeError(w, http.StatusBadRequest, "user must be a member of the team first")
+		return
+	}
+
+	if err := h.teamRepo.AddLeader(r.Context(), teamID, req.UserID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to add leader")
+		return
+	}
+
+	h.ensureLeaderRole(r.Context(), req.UserID)
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "added"})
+}
+
+func (h *AdminHandler) RemoveLeader(w http.ResponseWriter, r *http.Request) {
+	teamID := chi.URLParam(r, "teamId")
+	userID := chi.URLParam(r, "userId")
+
+	if err := h.teamRepo.RemoveLeader(r.Context(), teamID, userID); err != nil {
+		if strings.Contains(err.Error(), "last leader") {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to remove leader")
+		return
+	}
+
+	h.removeLeaderRoleIfOrphaned(r.Context(), userID)
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "removed"})
+}
+
+func (h *AdminHandler) ensureLeaderRole(ctx context.Context, userID string) {
+	accounts, err := h.userAccountRepo.FindAll(ctx)
+	if err != nil {
+		return
+	}
+	for i := range accounts {
+		if accounts[i].UserID == userID {
+			if !accounts[i].Roles[domain.RoleTeamLeader] {
+				accounts[i].Roles[domain.RoleTeamLeader] = true
+				h.userAccountRepo.Save(ctx, &accounts[i])
+			}
+			return
+		}
+	}
+}
+
+func (h *AdminHandler) removeLeaderRoleIfOrphaned(ctx context.Context, userID string) {
+	teams, err := h.teamRepo.FindAll(ctx)
+	if err != nil {
+		return
+	}
+	for _, t := range teams {
+		for _, lid := range t.LeaderIDs {
+			if lid == userID {
+				return
+			}
+		}
+	}
+	accounts, err := h.userAccountRepo.FindAll(ctx)
+	if err != nil {
+		return
+	}
+	for i := range accounts {
+		if accounts[i].UserID == userID && accounts[i].Roles[domain.RoleTeamLeader] {
+			delete(accounts[i].Roles, domain.RoleTeamLeader)
+			h.userAccountRepo.Save(ctx, &accounts[i])
+			return
+		}
+	}
 }

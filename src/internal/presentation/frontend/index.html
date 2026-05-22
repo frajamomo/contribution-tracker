@@ -100,6 +100,12 @@
         <div class="page-subtitle" id="page-subtitle"></div>
       </div>
 
+      <!-- Team selector (team leaders with multiple teams) -->
+      <div class="team-selector hidden" id="team-selector">
+        <label for="team-select">Select Team</label>
+        <select id="team-select" onchange="onTeamChange()"></select>
+      </div>
+
       <!-- Report form -->
       <div class="report-form">
         <div class="report-form-title">Generate Report</div>
@@ -267,6 +273,10 @@
                     <div class="form-field" style="flex:1">
                       <label>Team Name</label>
                       <input type="text" id="new-team-name" placeholder="e.g. Frontend" autocomplete="off">
+                    </div>
+                    <div class="form-field" style="flex:1">
+                      <label>Team Leader</label>
+                      <select id="new-team-leader"></select>
                     </div>
                     <div style="display:flex;gap:6px">
                       <button class="btn btn-primary btn-sm" onclick="createTeam()">Create</button>

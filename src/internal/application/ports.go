@@ -52,6 +52,8 @@ type TeamRepository interface {
 	RemoveRepository(ctx context.Context, teamID, repoID string) error
 	AddMember(ctx context.Context, teamID, userID string) error
 	RemoveMember(ctx context.Context, teamID, userID string) error
+	AddLeader(ctx context.Context, teamID, userID string) error
+	RemoveLeader(ctx context.Context, teamID, userID string) error
 	Delete(ctx context.Context, id string) error
 }
 

@@ -110,6 +110,8 @@ type mockTeamRepo struct {
 	removeRepoFn     func(ctx context.Context, teamID, repoID string) error
 	addMemberFn      func(ctx context.Context, teamID, userID string) error
 	removeMemberFn   func(ctx context.Context, teamID, userID string) error
+	addLeaderFn      func(ctx context.Context, teamID, userID string) error
+	removeLeaderFn   func(ctx context.Context, teamID, userID string) error
 	deleteFn         func(ctx context.Context, id string) error
 }
 
@@ -147,6 +149,20 @@ func (m *mockTeamRepo) AddMember(ctx context.Context, teamID, userID string) err
 func (m *mockTeamRepo) RemoveMember(ctx context.Context, teamID, userID string) error {
 	if m.removeMemberFn != nil {
 		return m.removeMemberFn(ctx, teamID, userID)
+	}
+	return nil
+}
+
+func (m *mockTeamRepo) AddLeader(ctx context.Context, teamID, userID string) error {
+	if m.addLeaderFn != nil {
+		return m.addLeaderFn(ctx, teamID, userID)
+	}
+	return nil
+}
+
+func (m *mockTeamRepo) RemoveLeader(ctx context.Context, teamID, userID string) error {
+	if m.removeLeaderFn != nil {
+		return m.removeLeaderFn(ctx, teamID, userID)
 	}
 	return nil
 }

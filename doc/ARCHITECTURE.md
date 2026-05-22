@@ -75,15 +75,17 @@ nginx reverse-proxies `/api` requests to the API container.
 
 ---
 
-## ADR-3: Role Model — Additive Multi-Role RBAC
+## ADR-3: Role Model — Additive Multi-Role RBAC with Per-Team Leadership
 
 ### Context
 
 Three distinct roles exist: administrator, team leader, and team member. A single user may hold multiple roles simultaneously (e.g. an admin who is also a team leader). Roles determine which UI elements are visible and which API actions are permitted.
 
+Team leadership is **per-team**: a team can have multiple leaders, and a user can lead multiple teams. The `TEAM_LEADER` role is a **derived role** — a user holds it if and only if they lead at least one team. Leadership is stored in a `team_leaders` junction table; each team must have at least one leader.
+
 ### Decision
 
-Implement an **additive multi-role model** where `UserAccount` holds a `Set<Role>`:
+Implement an **additive multi-role model** where `UserAccount` holds a `Set<Role>`, combined with a **per-team leadership model** via the `team_leaders` junction table:
 
 ![Roles class diagram](img/adr3_roles.svg)
 
@@ -92,23 +94,25 @@ Implement an **additive multi-role model** where `UserAccount` holds a `Set<Role
 | Action | TEAM_MEMBER | TEAM_LEADER | ADMIN |
 |--------|:-----------:|:-----------:|:-----:|
 | View own contributions | Yes | Yes | — |
-| View full team report | — | Yes | — |
-| Manage team repositories | — | Yes | — |
+| View full team report | — | Yes (own teams) | — |
+| Manage team repositories | — | Yes (own teams) | — |
 | Configure profile (platform usernames) | Yes | Yes | — |
+| Manage users, teams, leaders | — | — | Yes |
 | Backup / Restore | — | — | Yes |
-| Configure contribution sources | — | — | Yes |
 
 ### Rationale
 
 - **Additive model**: Each role grants additional permissions. A user with `{TEAM_MEMBER, TEAM_LEADER}` gets the union of both.
-- **Global roles, not per-team**: A team leader role applies to every team the user belongs to. This avoids a complex per-team role assignment table. If per-team roles are needed in the future, the model can evolve without breaking existing role checks.
-- **JWT carries roles**: The token includes the role set, so the middleware can enforce access without a database round-trip on every request.
+- **Per-team leadership**: A `team_leaders` junction table maps leaders to teams. The `RequireTeamLeaderOrAdmin` middleware checks whether the caller is a leader of the *specific team* being accessed. This prevents a leader of Team A from managing Team B's repositories or viewing Team B's full report.
+- **Derived TEAM_LEADER role**: The role is automatically granted when a user is made a team leader and removed when they no longer lead any team. This keeps the JWT-based role check fast while ensuring role consistency.
+- **JWT carries roles**: The token includes the role set, so the middleware can enforce access without a database round-trip on every request. Per-team authorization still requires loading the team to check `LeaderIDs`.
 
 ### Consequences
 
-- `AuthMiddleware.requireRole()` checks if the caller holds **at least one** of the required roles.
-- `ReportService` scopes data by role: `TEAM_MEMBER` sees only their own data; `TEAM_LEADER` sees the full team.
-- The UI shows/hides elements based on the role set returned at login.
+- `RequireTeamLeaderOrAdmin` middleware checks team-specific leadership (admins bypass the check).
+- `ReportService` scopes data by checking `team.LeaderIDs`: a leader sees all members only for teams they lead; a regular member sees only their own data.
+- The UI shows a team selector when a leader belongs to multiple teams, allowing them to choose which team to view.
+- Each team must retain at least one leader — removing the last leader is blocked.
 
 ---
 

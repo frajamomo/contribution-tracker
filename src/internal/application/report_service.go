@@ -46,7 +46,14 @@ func (s *ReportService) GenerateReport(ctx context.Context, query ReportQuery, o
 	}
 
 	var memberIDs []string
-	isOnlyMember := !query.CallerRoles[domain.RoleTeamLeader] && !query.CallerRoles[domain.RoleAdmin]
+	isLeaderOfThisTeam := false
+	for _, lid := range team.LeaderIDs {
+		if lid == query.CallerID {
+			isLeaderOfThisTeam = true
+			break
+		}
+	}
+	isOnlyMember := !query.CallerRoles[domain.RoleAdmin] && !isLeaderOfThisTeam
 	if isOnlyMember {
 		memberIDs = []string{query.CallerID}
 	} else if query.MemberID != "" {

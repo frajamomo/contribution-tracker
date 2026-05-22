@@ -148,7 +148,12 @@ func TestDeleteUser(t *testing.T) {
 		},
 	}
 
-	h := newAdminHandler(userRepo, accountRepo, &mockTeamRepo{})
+	teamRepo := &mockTeamRepo{
+		findByMemberIDFn: func(ctx context.Context, memberID string) ([]domain.Team, error) {
+			return nil, nil
+		},
+	}
+	h := newAdminHandler(userRepo, accountRepo, teamRepo)
 
 	r := chi.NewRouter()
 	r.Delete("/api/admin/users/{userId}", h.DeleteUser)
@@ -234,9 +239,22 @@ func TestCreateTeam(t *testing.T) {
 			return nil
 		},
 	}
+	userRepo := &mockUserRepo{
+		findByIDFn: func(ctx context.Context, id string) (*domain.User, error) {
+			return &domain.User{ID: id, Username: "leader"}, nil
+		},
+	}
+	accountRepo := &mockUserAccountRepo{
+		findAllFn: func(ctx context.Context) ([]domain.UserAccount, error) {
+			return []domain.UserAccount{
+				{ID: "a-1", UserID: "u-leader", Roles: map[domain.Role]bool{domain.RoleTeamMember: true}},
+			}, nil
+		},
+		saveFn: func(ctx context.Context, account *domain.UserAccount) error { return nil },
+	}
 
-	h := newAdminHandler(&mockUserRepo{}, &mockUserAccountRepo{}, teamRepo)
-	body := `{"name":"Frontend"}`
+	h := newAdminHandler(userRepo, accountRepo, teamRepo)
+	body := `{"name":"Frontend","leaderId":"u-leader"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/admin/teams", strings.NewReader(body))
 	w := httptest.NewRecorder()
 
@@ -255,6 +273,12 @@ func TestCreateTeam(t *testing.T) {
 	if savedTeam.Name != "Frontend" {
 		t.Errorf("expected name Frontend, got %s", savedTeam.Name)
 	}
+	if len(savedTeam.LeaderIDs) != 1 || savedTeam.LeaderIDs[0] != "u-leader" {
+		t.Errorf("expected leader u-leader, got %v", savedTeam.LeaderIDs)
+	}
+	if len(savedTeam.MemberIDs) != 1 || savedTeam.MemberIDs[0] != "u-leader" {
+		t.Errorf("expected leader auto-added as member, got %v", savedTeam.MemberIDs)
+	}
 
 	var result TeamSummaryDTO
 	json.NewDecoder(w.Body).Decode(&result)
@@ -263,10 +287,10 @@ func TestCreateTeam(t *testing.T) {
 	}
 }
 
-func TestCreateTeamMissingName(t *testing.T) {
+func TestCreateTeamMissingLeader(t *testing.T) {
 	h := newAdminHandler(&mockUserRepo{}, &mockUserAccountRepo{}, &mockTeamRepo{})
 
-	body := `{"name":""}`
+	body := `{"name":"Frontend"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/admin/teams", strings.NewReader(body))
 	w := httptest.NewRecorder()
 
@@ -281,13 +305,23 @@ func TestDeleteTeam(t *testing.T) {
 	var deletedTeamID string
 
 	teamRepo := &mockTeamRepo{
+		findByIDFn: func(ctx context.Context, id string) (*domain.Team, error) {
+			return &domain.Team{ID: id, Name: "Backend", LeaderIDs: []string{"u-leader"}}, nil
+		},
 		deleteFn: func(ctx context.Context, id string) error {
 			deletedTeamID = id
 			return nil
 		},
+		findAllFn: func(ctx context.Context) ([]domain.Team, error) {
+			return nil, nil
+		},
 	}
 
-	h := newAdminHandler(&mockUserRepo{}, &mockUserAccountRepo{}, teamRepo)
+	h := newAdminHandler(&mockUserRepo{}, &mockUserAccountRepo{
+		findAllFn: func(ctx context.Context) ([]domain.UserAccount, error) {
+			return nil, nil
+		},
+	}, teamRepo)
 
 	r := chi.NewRouter()
 	r.Delete("/api/admin/teams/{teamId}", h.DeleteTeam)
@@ -297,7 +331,7 @@ func TestDeleteTeam(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 	if deletedTeamID != "t-1" {
 		t.Errorf("expected team t-1 deleted, got %s", deletedTeamID)

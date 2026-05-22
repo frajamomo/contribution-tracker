@@ -5,6 +5,7 @@
 let session = null;       // { token, roles, user: {id, username, displayName, avatarUrl} }
 let reportType = 'activity'; // 'activity' | 'weighted'
 let teamData = [];        // array of team objects from API
+let selectedTeamIndex = 0; // index into teamData for the currently selected team
 let currentAbort = null;  // AbortController for in-flight report stream
 
 // ══════════════════════════════════════════════════════
@@ -157,6 +158,18 @@ async function mountApp() {
     teamData = [];
   }
 
+  // Team selector for leaders with multiple teams
+  selectedTeamIndex = 0;
+  const teamSelector = document.getElementById('team-selector');
+  if (isTeamLeader && teamData.length > 1) {
+    const sel = document.getElementById('team-select');
+    sel.innerHTML = teamData.map((t, i) => `<option value="${i}">${escapeHtml(t.Name)}</option>`).join('');
+    sel.value = '0';
+    teamSelector.classList.remove('hidden');
+  } else {
+    teamSelector.classList.add('hidden');
+  }
+
   // Page header
   if (isTeamLeader) {
     document.getElementById('page-title').textContent = 'Team Report';
@@ -212,7 +225,9 @@ function populateTeamMembers() {
 // ══════════════════════════════════════════════════════
 
 function getTeam() {
-  return teamData.length > 0 ? teamData[0] : null;
+  if (teamData.length === 0) return null;
+  if (selectedTeamIndex >= 0 && selectedTeamIndex < teamData.length) return teamData[selectedTeamIndex];
+  return teamData[0];
 }
 
 function renderRepos() {
@@ -338,6 +353,13 @@ async function refreshTeams() {
   } catch (e) {
     // keep current data
   }
+}
+
+function onTeamChange() {
+  selectedTeamIndex = parseInt(document.getElementById('team-select').value, 10) || 0;
+  renderRepos();
+  populateTeamMembers();
+  document.getElementById('results-area').innerHTML = '';
 }
 
 // ══════════════════════════════════════════════════════
@@ -978,10 +1000,31 @@ function renderAdminTeams() {
   }
   container.innerHTML = allTeams.map(t => {
     const memberCount = (t.MemberIDs || []).length;
+    const leaders = (t.Leaders || []);
+    const leaderIDs = (t.LeaderIDs || []);
+
+    const leaderTags = leaders.map(l => {
+      const removeBtn = leaderIDs.length > 1
+        ? `<button class="remove-leader" onclick="removeLeaderFromTeam('${escapeHtml(t.ID)}','${escapeHtml(l.id)}')" title="Remove leader">&times;</button>`
+        : '';
+      return `<span class="leader-tag">${escapeHtml(l.displayName || l.username)}${removeBtn}</span>`;
+    }).join('');
+
+    const teamMembers = (t.Members || []).filter(m => !leaderIDs.includes(m.id));
+    const addLeaderSelect = teamMembers.length > 0
+      ? `<select class="add-leader-select" onchange="addLeaderToTeam('${escapeHtml(t.ID)}',this.value);this.value=''">
+           <option value="">+ leader</option>
+           ${teamMembers.map(m => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.displayName || m.username)}</option>`).join('')}
+         </select>`
+      : '';
+
     return `<div class="admin-team-item">
-      <div>
-        <span style="font-weight:500">${escapeHtml(t.Name)}</span>
-        <span style="color:var(--text-muted);font-size:11px;margin-left:8px">${memberCount} member${memberCount !== 1 ? 's' : ''}</span>
+      <div class="team-info">
+        <div>
+          <span style="font-weight:500">${escapeHtml(t.Name)}</span>
+          <span style="color:var(--text-muted);font-size:11px;margin-left:8px">${memberCount} member${memberCount !== 1 ? 's' : ''}</span>
+        </div>
+        <div class="team-leaders">${leaderTags}${addLeaderSelect}</div>
       </div>
       <button class="btn-danger" onclick="deleteTeam('${escapeHtml(t.ID)}','${escapeHtml(t.Name)}')" title="Delete team">&#x1F5D1;</button>
     </div>`;
@@ -992,6 +1035,9 @@ function toggleCreateTeamForm() {
   const form = document.getElementById('create-team-form');
   form.classList.toggle('visible');
   if (form.classList.contains('visible')) {
+    const leaderSel = document.getElementById('new-team-leader');
+    leaderSel.innerHTML = '<option value="">Select a leader...</option>' +
+      adminUsers.map(u => `<option value="${escapeHtml(u.id)}">${escapeHtml(u.displayName || u.username)}</option>`).join('');
     document.getElementById('new-team-name').focus();
   }
   document.getElementById('create-team-status').textContent = '';
@@ -999,10 +1045,16 @@ function toggleCreateTeamForm() {
 
 async function createTeam() {
   const name = document.getElementById('new-team-name').value.trim();
+  const leaderId = document.getElementById('new-team-leader').value;
   const statusEl = document.getElementById('create-team-status');
 
   if (!name) {
     statusEl.textContent = 'Team name is required.';
+    statusEl.style.color = '#cf222e';
+    return;
+  }
+  if (!leaderId) {
+    statusEl.textContent = 'A team leader is required.';
     statusEl.style.color = '#cf222e';
     return;
   }
@@ -1011,7 +1063,7 @@ async function createTeam() {
     const resp = await apiFetch('/api/admin/teams', {
       method: 'POST',
       headers: authHeaders(),
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, leaderId }),
     });
 
     if (!resp.ok) {
@@ -1022,6 +1074,7 @@ async function createTeam() {
     }
 
     document.getElementById('new-team-name').value = '';
+    document.getElementById('new-team-leader').value = '';
     document.getElementById('create-team-form').classList.remove('visible');
     statusEl.textContent = '';
 
@@ -1050,6 +1103,42 @@ async function deleteTeam(teamId, teamName) {
     await loadAdminUsers();
   } catch (e) {
     alert('Failed to delete team: ' + e.message);
+  }
+}
+
+async function addLeaderToTeam(teamId, userId) {
+  if (!teamId || !userId) return;
+  try {
+    const resp = await apiFetch(`/api/admin/teams/${encodeURIComponent(teamId)}/leaders`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ userId }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      alert('Failed to add leader: ' + (err.error || resp.statusText));
+      return;
+    }
+    await loadAdminUsers();
+  } catch (e) {
+    alert('Failed to add leader: ' + e.message);
+  }
+}
+
+async function removeLeaderFromTeam(teamId, userId) {
+  try {
+    const resp = await apiFetch(`/api/admin/teams/${encodeURIComponent(teamId)}/leaders/${encodeURIComponent(userId)}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      alert('Failed to remove leader: ' + (err.error || resp.statusText));
+      return;
+    }
+    await loadAdminUsers();
+  } catch (e) {
+    alert('Failed to remove leader: ' + e.message);
   }
 }
 

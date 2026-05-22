@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"contribution-tracker/internal/domain"
@@ -216,6 +217,33 @@ func (m *mockTeamRepo) RemoveMember(_ context.Context, teamID, userID string) er
 		}
 	}
 	t.MemberIDs = filtered
+	return nil
+}
+
+func (m *mockTeamRepo) AddLeader(_ context.Context, teamID, userID string) error {
+	t, ok := m.teams[teamID]
+	if !ok {
+		return NewNotFoundError("team not found")
+	}
+	t.LeaderIDs = append(t.LeaderIDs, userID)
+	return nil
+}
+
+func (m *mockTeamRepo) RemoveLeader(_ context.Context, teamID, userID string) error {
+	t, ok := m.teams[teamID]
+	if !ok {
+		return NewNotFoundError("team not found")
+	}
+	if len(t.LeaderIDs) <= 1 {
+		return fmt.Errorf("cannot remove the last leader of a team")
+	}
+	var filtered []string
+	for _, id := range t.LeaderIDs {
+		if id != userID {
+			filtered = append(filtered, id)
+		}
+	}
+	t.LeaderIDs = filtered
 	return nil
 }
 

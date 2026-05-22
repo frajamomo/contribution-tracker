@@ -7,6 +7,8 @@ import (
 
 	"contribution-tracker/internal/application"
 	"contribution-tracker/internal/domain"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type contextKey string
@@ -69,6 +71,44 @@ func (m *AuthMiddleware) RequireRole(roles ...domain.Role) func(http.Handler) ht
 			}
 
 			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func RequireTeamLeaderOrAdmin(teamRepo application.TeamRepository) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			authCtx := GetAuthContext(r)
+			if authCtx == nil {
+				writeError(w, http.StatusUnauthorized, "not authenticated")
+				return
+			}
+
+			if authCtx.Roles[domain.RoleAdmin] {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			teamID := chi.URLParam(r, "teamId")
+			if teamID == "" {
+				writeError(w, http.StatusBadRequest, "team ID required")
+				return
+			}
+
+			team, err := teamRepo.FindByID(r.Context(), teamID)
+			if err != nil {
+				writeError(w, http.StatusNotFound, "team not found")
+				return
+			}
+
+			for _, lid := range team.LeaderIDs {
+				if lid == authCtx.UserID {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+
+			writeError(w, http.StatusForbidden, "you are not a leader of this team")
 		})
 	}
 }

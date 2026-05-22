@@ -68,6 +68,8 @@ type MemberDTO struct {
 type TeamDTO struct {
 	ID            string       `json:"ID"`
 	Name          string       `json:"Name"`
+	LeaderIDs     []string     `json:"LeaderIDs"`
+	Leaders       []MemberDTO  `json:"Leaders"`
 	MemberIDs     []string     `json:"MemberIDs"`
 	Members       []MemberDTO  `json:"Members"`
 	RepositoryIDs []string     `json:"RepositoryIDs"`
@@ -109,8 +111,9 @@ type AdminUserDTO struct {
 }
 
 type TeamSummaryDTO struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID        string   `json:"id"`
+	Name      string   `json:"name"`
+	LeaderIDs []string `json:"leaderIds"`
 }
 
 type AddMemberRequest struct {
@@ -118,7 +121,12 @@ type AddMemberRequest struct {
 }
 
 type CreateTeamRequest struct {
-	Name string `json:"name"`
+	Name     string `json:"name"`
+	LeaderID string `json:"leaderId"`
+}
+
+type AddLeaderRequest struct {
+	UserID string `json:"userId"`
 }
 
 type SSEEventData struct {

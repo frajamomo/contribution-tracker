@@ -58,6 +58,20 @@ func (h *TeamHandler) ListTeams(w http.ResponseWriter, r *http.Request) {
 			repos = []RepoDTO{}
 		}
 
+		var leaders []MemberDTO
+		if len(t.LeaderIDs) > 0 {
+			leaderUsers, leaderErr := h.userRepo.FindByIDs(r.Context(), t.LeaderIDs)
+			if leaderErr == nil {
+				leaders = make([]MemberDTO, len(leaderUsers))
+				for j, u := range leaderUsers {
+					leaders[j] = MemberDTO{ID: u.ID, Username: u.Username, DisplayName: u.DisplayName}
+				}
+			}
+		}
+		if leaders == nil {
+			leaders = []MemberDTO{}
+		}
+
 		var members []MemberDTO
 		if len(t.MemberIDs) > 0 {
 			users, userErr := h.userRepo.FindByIDs(r.Context(), t.MemberIDs)
@@ -75,6 +89,8 @@ func (h *TeamHandler) ListTeams(w http.ResponseWriter, r *http.Request) {
 		dtos[i] = TeamDTO{
 			ID:            t.ID,
 			Name:          t.Name,
+			LeaderIDs:     t.LeaderIDs,
+			Leaders:       leaders,
 			MemberIDs:     t.MemberIDs,
 			Members:       members,
 			RepositoryIDs: t.RepositoryIDs,

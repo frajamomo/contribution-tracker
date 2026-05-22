@@ -5,9 +5,10 @@ A web application that aggregates and visualizes software contributions (commits
 ## Features
 
 - **Multi-platform aggregation** — fetch contributions from GitHub and GitLab with a pluggable architecture for additional platforms
-- **Role-based access control** — three roles (Team Member, Team Leader, Admin) with scoped visibility and permissions
+- **Role-based access control** — three roles (Team Member, Team Leader, Admin) with per-team leader scoping and permissions
 - **Real-time streaming reports** — Server-Sent Events deliver per-member results progressively as data is fetched
 - **Interactive report cards** — collapsible user cards with activity type filtering via clickable stat pills
+- **Per-team leadership** — teams can have multiple leaders, users can lead multiple teams; leaders select which team to view when generating reports
 - **Team management** — team leaders can add/remove repositories with automatic API token reuse across same-platform repos
 - **Per-platform usernames** — users configure their GitHub/GitLab identity via a profile page
 - **Backup & restore** — admin can export/import operational data (API tokens are base64-encoded in exports)
@@ -67,7 +68,7 @@ All demo accounts use password: **`secret`**
 | `carol` | Carol Davis | Team Member, Team Leader |
 | `admin` | Administrator | Admin |
 
-The demo includes an **Engineering** team with alice, bob, and carol as members.
+The demo includes an **Engineering** team with alice, bob, and carol as members, with carol as team leader. A **devops** team has alice as a member.
 
 ## Development
 
@@ -106,17 +107,26 @@ make clean              # Clean build artifacts
 ## API Routes
 
 ```
-POST   /api/auth/login                          — public
-POST   /api/reports/stream                       — authenticated (SSE)
-GET    /api/profile                              — authenticated
-PUT    /api/profile/platform-username            — authenticated
-GET    /api/teams                                — authenticated
-POST   /api/teams/{teamId}/repositories          — Team Leader | Admin
-DELETE /api/teams/{teamId}/repositories/{repoId} — Team Leader | Admin
-GET    /api/admin/backup                         — Admin
-POST   /api/admin/restore                        — Admin
-GET    /api/admin/config                         — Admin
-PUT    /api/admin/config                         — Admin
+POST   /api/auth/login                                — public
+POST   /api/reports/stream                             — authenticated (SSE)
+GET    /api/profile                                    — authenticated
+PUT    /api/profile/platform-username                  — authenticated
+GET    /api/teams                                      — authenticated
+POST   /api/teams/{teamId}/repositories                — Team Leader of team | Admin
+DELETE /api/teams/{teamId}/repositories/{repoId}       — Team Leader of team | Admin
+POST   /api/teams/{teamId}/members                     — Admin
+DELETE /api/teams/{teamId}/members/{userId}             — Admin
+GET    /api/admin/users                                — Admin
+POST   /api/admin/users                                — Admin
+DELETE /api/admin/users/{userId}                        — Admin
+POST   /api/admin/teams                                — Admin
+DELETE /api/admin/teams/{teamId}                        — Admin
+POST   /api/admin/teams/{teamId}/leaders               — Admin
+DELETE /api/admin/teams/{teamId}/leaders/{userId}       — Admin
+GET    /api/admin/backup                               — Admin
+POST   /api/admin/restore                              — Admin
+GET    /api/admin/config                               — Admin
+PUT    /api/admin/config                               — Admin
 ```
 
 ## Project Structure

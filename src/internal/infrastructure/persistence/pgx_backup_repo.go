@@ -78,7 +78,7 @@ func (r *PgxBackupRepo) Restore(ctx context.Context, data *domain.BackupFile) er
 	defer tx.Rollback(ctx)
 
 	tables := []string{
-		"team_repositories", "team_members", "user_platform_usernames",
+		"team_repositories", "team_leaders", "team_members", "user_platform_usernames",
 		"user_accounts", "teams", "repositories", "users", "app_config",
 	}
 	for _, table := range tables {
@@ -133,6 +133,13 @@ func (r *PgxBackupRepo) Restore(ctx context.Context, data *domain.BackupFile) er
 		_, err := tx.Exec(ctx, "INSERT INTO teams (id, name) VALUES ($1,$2)", t.ID, t.Name)
 		if err != nil {
 			return fmt.Errorf("restore team %s: %w", t.ID, err)
+		}
+		for _, leaderID := range t.LeaderIDs {
+			_, err := tx.Exec(ctx,
+				"INSERT INTO team_leaders (team_id, user_id) VALUES ($1,$2)", t.ID, leaderID)
+			if err != nil {
+				return fmt.Errorf("restore team leader: %w", err)
+			}
 		}
 		for _, memberID := range t.MemberIDs {
 			_, err := tx.Exec(ctx,

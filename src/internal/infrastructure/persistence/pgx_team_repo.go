@@ -25,17 +25,9 @@ func (r *PgxTeamRepo) FindByID(ctx context.Context, id string) (*domain.Team, er
 		return nil, fmt.Errorf("find team by id: %w", err)
 	}
 
-	memberIDs, err := r.loadMemberIDs(ctx, t.ID)
-	if err != nil {
+	if err := r.loadRelations(ctx, &t); err != nil {
 		return nil, err
 	}
-	t.MemberIDs = memberIDs
-
-	repoIDs, err := r.loadRepositoryIDs(ctx, t.ID)
-	if err != nil {
-		return nil, err
-	}
-	t.RepositoryIDs = repoIDs
 
 	return &t, nil
 }
@@ -60,17 +52,9 @@ func (r *PgxTeamRepo) FindByMemberID(ctx context.Context, memberID string) ([]do
 	}
 
 	for i := range teams {
-		memberIDs, err := r.loadMemberIDs(ctx, teams[i].ID)
-		if err != nil {
+		if err := r.loadRelations(ctx, &teams[i]); err != nil {
 			return nil, err
 		}
-		teams[i].MemberIDs = memberIDs
-
-		repoIDs, err := r.loadRepositoryIDs(ctx, teams[i].ID)
-		if err != nil {
-			return nil, err
-		}
-		teams[i].RepositoryIDs = repoIDs
 	}
 
 	return teams, nil
@@ -88,6 +72,18 @@ func (r *PgxTeamRepo) Save(ctx context.Context, team *domain.Team) error {
 		team.ID, team.Name)
 	if err != nil {
 		return fmt.Errorf("upsert team: %w", err)
+	}
+
+	_, err = tx.Exec(ctx, "DELETE FROM team_leaders WHERE team_id = $1", team.ID)
+	if err != nil {
+		return fmt.Errorf("clear leaders: %w", err)
+	}
+	for _, leaderID := range team.LeaderIDs {
+		_, err = tx.Exec(ctx,
+			"INSERT INTO team_leaders (team_id, user_id) VALUES ($1, $2)", team.ID, leaderID)
+		if err != nil {
+			return fmt.Errorf("insert leader: %w", err)
+		}
 	}
 
 	_, err = tx.Exec(ctx, "DELETE FROM team_members WHERE team_id = $1", team.ID)
@@ -130,17 +126,9 @@ func (r *PgxTeamRepo) FindAll(ctx context.Context) ([]domain.Team, error) {
 	}
 
 	for i := range teams {
-		memberIDs, err := r.loadMemberIDs(ctx, teams[i].ID)
-		if err != nil {
+		if err := r.loadRelations(ctx, &teams[i]); err != nil {
 			return nil, err
 		}
-		teams[i].MemberIDs = memberIDs
-
-		repoIDs, err := r.loadRepositoryIDs(ctx, teams[i].ID)
-		if err != nil {
-			return nil, err
-		}
-		teams[i].RepositoryIDs = repoIDs
 	}
 
 	return teams, nil
@@ -177,13 +165,94 @@ func (r *PgxTeamRepo) AddMember(ctx context.Context, teamID, userID string) erro
 }
 
 func (r *PgxTeamRepo) RemoveMember(ctx context.Context, teamID, userID string) error {
-	_, err := r.pool.Exec(ctx,
+	var isLeader bool
+	err := r.pool.QueryRow(ctx,
+		"SELECT EXISTS(SELECT 1 FROM team_leaders WHERE team_id = $1 AND user_id = $2)",
+		teamID, userID).Scan(&isLeader)
+	if err != nil {
+		return fmt.Errorf("check leader status: %w", err)
+	}
+	if isLeader {
+		return fmt.Errorf("cannot remove a team leader from members; remove leadership first")
+	}
+
+	_, err = r.pool.Exec(ctx,
 		"DELETE FROM team_members WHERE team_id = $1 AND user_id = $2",
 		teamID, userID)
 	if err != nil {
 		return fmt.Errorf("remove member from team: %w", err)
 	}
 	return nil
+}
+
+func (r *PgxTeamRepo) AddLeader(ctx context.Context, teamID, userID string) error {
+	_, err := r.pool.Exec(ctx,
+		"INSERT INTO team_leaders (team_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+		teamID, userID)
+	if err != nil {
+		return fmt.Errorf("add leader to team: %w", err)
+	}
+	return nil
+}
+
+func (r *PgxTeamRepo) RemoveLeader(ctx context.Context, teamID, userID string) error {
+	var count int
+	err := r.pool.QueryRow(ctx,
+		"SELECT COUNT(*) FROM team_leaders WHERE team_id = $1", teamID).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("count leaders: %w", err)
+	}
+	if count <= 1 {
+		return fmt.Errorf("cannot remove the last leader of a team")
+	}
+
+	_, err = r.pool.Exec(ctx,
+		"DELETE FROM team_leaders WHERE team_id = $1 AND user_id = $2",
+		teamID, userID)
+	if err != nil {
+		return fmt.Errorf("remove leader from team: %w", err)
+	}
+	return nil
+}
+
+func (r *PgxTeamRepo) loadRelations(ctx context.Context, t *domain.Team) error {
+	leaderIDs, err := r.loadLeaderIDs(ctx, t.ID)
+	if err != nil {
+		return err
+	}
+	t.LeaderIDs = leaderIDs
+
+	memberIDs, err := r.loadMemberIDs(ctx, t.ID)
+	if err != nil {
+		return err
+	}
+	t.MemberIDs = memberIDs
+
+	repoIDs, err := r.loadRepositoryIDs(ctx, t.ID)
+	if err != nil {
+		return err
+	}
+	t.RepositoryIDs = repoIDs
+	return nil
+}
+
+func (r *PgxTeamRepo) loadLeaderIDs(ctx context.Context, teamID string) ([]string, error) {
+	rows, err := r.pool.Query(ctx,
+		"SELECT user_id FROM team_leaders WHERE team_id = $1", teamID)
+	if err != nil {
+		return nil, fmt.Errorf("load leader ids: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan leader id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
 }
 
 func (r *PgxTeamRepo) loadMemberIDs(ctx context.Context, teamID string) ([]string, error) {
