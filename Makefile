@@ -1,4 +1,4 @@
-.PHONY: build test test-unit test-integration run docker-build docker-up docker-down migrate clean
+.PHONY: build test test-unit test-integration test-all run docker-build docker-up docker-down docker-logs migrate clean
 
 SRC_DIR := src
 DOCKER_DIR := docker
